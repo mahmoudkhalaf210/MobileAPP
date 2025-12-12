@@ -16,10 +16,15 @@ namespace Snap.APIs.Middlewares
         private static readonly ConcurrentDictionary<string, int> _connectionToDriverMap = new();
         private static readonly ConcurrentDictionary<int, DriverLocationResponseDto> _onlineDrivers = new();
 
+        // Static instance to allow access from controllers
+        private static WebSocketMiddleware? _instance;
+        public static WebSocketMiddleware? Instance => _instance;
+
         public WebSocketMiddleware(RequestDelegate next, IServiceScopeFactory serviceScopeFactory)
         {
             _next = next;
             _serviceScopeFactory = serviceScopeFactory;
+            _instance = this;
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -237,6 +242,30 @@ namespace Snap.APIs.Middlewares
                     catch { }
                 }
             }
+        }
+
+        // Public static method to broadcast from controllers
+        public static async Task BroadcastLocationUpdate(DriverLocationResponseDto driverLocation)
+        {
+            if (_instance != null)
+            {
+                await _instance.BroadcastToAll("LocationUpdate", driverLocation);
+            }
+        }
+
+        // Public static method to notify driver removal
+        public static async Task BroadcastDriverRemoved(int driverId)
+        {
+            if (_instance != null)
+            {
+                await _instance.BroadcastToAll("DriverRemoved", new { driverId });
+            }
+        }
+
+        // Public static method to update driver location in cache
+        public static void UpdateDriverLocation(DriverLocationResponseDto driverLocation)
+        {
+            _onlineDrivers.AddOrUpdate(driverLocation.DriverId, driverLocation, (key, oldValue) => driverLocation);
         }
 
         private async Task HandleDisconnection(string connectionId)

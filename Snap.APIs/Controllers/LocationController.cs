@@ -46,8 +46,11 @@ namespace Snap.APIs.Controllers
 
             _driverLocations.AddOrUpdate(locationDto.DriverId, driverLocation, (key, oldValue) => driverLocation);
 
-            // WebSocket Middleware will handle broadcasting automatically
-            // No need to manually broadcast here
+            // Update WebSocket middleware cache
+            Snap.APIs.Middlewares.WebSocketMiddleware.UpdateDriverLocation(driverLocation);
+
+            // Broadcast location update to all WebSocket clients
+            await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastLocationUpdate(driverLocation);
 
             return Ok(new { message = "Location updated successfully", location = driverLocation });
         }
@@ -109,8 +112,8 @@ namespace Snap.APIs.Controllers
         {
             if (_driverLocations.TryRemove(driverId, out var removedLocation))
             {
-                // WebSocket Middleware will handle broadcasting automatically
-                // No need to manually notify here
+                // Notify all WebSocket clients that driver was removed
+                await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastDriverRemoved(driverId);
 
                 return Ok(new { message = "Driver location removed", driverId });
             }

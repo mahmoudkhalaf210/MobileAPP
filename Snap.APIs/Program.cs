@@ -43,6 +43,9 @@ namespace Snap.APIs
 
             // WebSocket is handled by middleware - no service registration needed
 
+            // Add Order Cancellation Background Service
+            builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
+
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
             builder.Services.Configure<ApiBehaviorOptions>(
