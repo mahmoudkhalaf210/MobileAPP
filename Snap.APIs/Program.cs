@@ -1,0 +1,151 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Snap.APIs.Errors;
+using Snap.APIs.Extensions;
+using Snap.APIs.Middlewares;
+// using Snap.APIs.Hubs; // Removed - Using WebSocket instead
+using Snap.Core.Entities;
+using Snap.Repository.Data;
+using Snap.Repository.Seeders;
+using System.Text.Json.Serialization;
+
+namespace Snap.APIs
+{
+    public class Program
+    {
+        public static async Task Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            // Add services to the container.
+            builder.Services.AddControllers().AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+            });
+
+            // Configure DbContext
+            builder.Services.AddDbContext<SnapDbContext>(options =>
+                options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sqlServerOptionsAction: sqlOptions =>
+                {
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5, 
+                        maxRetryDelay: TimeSpan.FromSeconds(30), 
+                        errorNumbersToAdd: null); 
+                })
+            );
+
+            // Configure Identity Services
+            builder.Services.AddIdentityServices();
+
+            // WebSocket is handled by middleware - no service registration needed
+
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
+            builder.Services.Configure<ApiBehaviorOptions>(
+             Options =>{Options
+                .InvalidModelStateResponseFactory = (actionContext) =>
+            {
+                var errors = actionContext.ModelState
+                .Where(p => p.Value.Errors.Count() > 0)
+                .SelectMany(p => p.Value.Errors)
+                .Select(E => E.ErrorMessage)
+                .ToArray();
+
+            var ValidationErrorResponse = new ApiValidationErrorResponse() 
+             { Erorrs = errors};
+                //return new BadRequestObjectResult(ValidationErrorResponse)
+                // Return the format you want
+                return new BadRequestObjectResult(new
+                {
+                    statusCode = 400,
+                    message = string.Join(" ", errors),
+                    errors = errors
+                });
+                ;
+            };});
+
+
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll",
+                    policy =>
+                    {
+                        policy.AllowAnyOrigin()
+                              .AllowAnyHeader()
+                              .AllowAnyMethod();
+                    });
+                    
+                options.AddPolicy("SignalRPolicy",
+                    policy =>
+                    {
+                        policy.AllowAnyOrigin()
+                              .AllowAnyHeader()
+                              .AllowAnyMethod()
+                              .SetIsOriginAllowed(_ => true);
+                    });
+            });
+
+
+            var app = builder.Build();
+
+            #region Apply Migrations and Seed Data
+
+            using var scope = app.Services.CreateScope();
+            var services = scope.ServiceProvider;
+            var loggerFactory = services.GetRequiredService<ILoggerFactory>();
+
+            try
+            {
+                var dbContext = services.GetRequiredService<SnapDbContext>();
+
+                // Apply pending migrations
+                await dbContext.Database.MigrateAsync();
+
+                // Seed default users
+                var userManager = services.GetRequiredService<UserManager<User>>();
+                var logger = loggerFactory.CreateLogger<Program>();
+
+                logger.LogInformation("Seeding default users...");
+                await UserSeed.SeedUserAsync(userManager);
+                logger.LogInformation("User seeding completed.");
+            }
+            catch (Exception e)
+            {
+                var logger = loggerFactory.CreateLogger<Program>();
+                logger.LogError(e, "An error occurred while applying migrations and seeding users.");
+            }
+
+            #endregion
+
+            // Configure the HTTP request pipeline.
+            //if (app.Environment.IsDevelopment())
+            //{
+                app.UseMiddleware<ExceptionMiddleware>();
+                app.UseDeveloperExceptionPage();    
+                app.UseSwagger();
+                app.UseSwaggerUI();
+            //}
+
+            app.UseCors("AllowAll");
+
+            // Enable WebSocket support
+            app.UseWebSockets();
+
+            app.UseHttpsRedirection();
+
+            app.UseAuthentication(); 
+            app.UseAuthorization();
+            
+            // Add WebSocket Middleware (must be after UseWebSockets and before MapControllers)
+            app.UseMiddleware<WebSocketMiddleware>();
+            
+            app.MapControllers();
+
+            app.Run();
+        }
+    }
+}

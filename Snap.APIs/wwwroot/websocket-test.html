@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - اختبار WebSocket</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .connection-section {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-connect {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-connect:hover {
+            background: #45a049;
+        }
+        
+        .btn-disconnect {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-disconnect:hover {
+            background: #da190b;
+        }
+        
+        .btn-action {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn-action:hover {
+            background: #0b7dda;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .messages-container {
+            margin-top: 20px;
+        }
+        
+        #messages {
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 5px;
+            border-right: 4px solid;
+        }
+        
+        .message.sent {
+            background: #e3f2fd;
+            border-color: #2196F3;
+        }
+        
+        .message.received {
+            background: #f1f8e9;
+            border-color: #4CAF50;
+        }
+        
+        .message.error {
+            background: #ffebee;
+            border-color: #f44336;
+        }
+        
+        .message-info {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .message-content {
+            word-break: break-all;
+        }
+        
+        .actions-section {
+            margin-top: 20px;
+        }
+        
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .clear-btn {
+            background: #ff9800;
+            color: white;
+            margin-top: 10px;
+        }
+        
+        .clear-btn:hover {
+            background: #e68900;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 WebSocket Test - اختبار WebSocket</h1>
+        
+        <div class="connection-section">
+            <div class="input-group">
+                <label for="url">WebSocket URL:</label>
+                <input type="text" id="url" value="wss://localhost:7155/ws/location" placeholder="wss://localhost:7155/ws/location">
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-connect" onclick="connect()">🔌 Connect</button>
+                <button class="btn-disconnect" onclick="disconnect()" disabled id="disconnectBtn">❌ Disconnect</button>
+            </div>
+            
+            <div id="status" class="status disconnected">❌ Disconnected</div>
+        </div>
+        
+        <div class="actions-section">
+            <h3>Actions - الإجراءات:</h3>
+            <div class="actions-grid">
+                <button class="btn-action" onclick="connectDriver()" disabled id="actionBtn">👤 Connect Driver</button>
+                <button class="btn-action" onclick="connectClient()" disabled id="actionBtn">👥 Connect Client</button>
+                <button class="btn-action" onclick="updateLocation()" disabled id="actionBtn">📍 Update Location</button>
+                <button class="btn-action" onclick="getOnlineDrivers()" disabled id="actionBtn">📋 Get Online Drivers</button>
+                <button class="btn-action" onclick="getDriverLocation()" disabled id="actionBtn">🔍 Get Driver Location</button>
+                <button class="btn-action" onclick="ping()" disabled id="actionBtn">🏓 Ping</button>
+            </div>
+        </div>
+        
+        <div class="messages-container">
+            <h3>Messages - الرسائل:</h3>
+            <button class="clear-btn" onclick="clearMessages()">🗑️ Clear Messages</button>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let driverId = 1; // Default driver ID for testing
+
+        function updateStatus(connected) {
+            const status = document.getElementById('status');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const actionBtns = document.querySelectorAll('#actionBtn');
+            
+            if (connected) {
+                status.textContent = '✅ Connected';
+                status.className = 'status connected';
+                disconnectBtn.disabled = false;
+                actionBtns.forEach(btn => btn.disabled = false);
+            } else {
+                status.textContent = '❌ Disconnected';
+                status.className = 'status disconnected';
+                disconnectBtn.disabled = true;
+                actionBtns.forEach(btn => btn.disabled = true);
+            }
+        }
+
+        function log(message, type = 'info') {
+            const messages = document.getElementById('messages');
+            const time = new Date().toLocaleTimeString();
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            let icon = '📨';
+            if (type === 'sent') icon = '📤';
+            else if (type === 'received') icon = '📥';
+            else if (type === 'error') icon = '❌';
+            else if (type === 'success') icon = '✅';
+            
+            messageDiv.innerHTML = `
+                <div class="message-info">${icon} [${time}]</div>
+                <div class="message-content">${message}</div>
+            `;
+            
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function connect() {
+            const url = document.getElementById('url').value;
+            log(`🔌 Connecting to ${url}...`, 'info');
+            
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    log('✅ Connected successfully!', 'success');
+                    updateStatus(true);
+                };
+
+                ws.onmessage = (event) => {
+                    log(`📥 Received: ${event.data}`, 'received');
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`   Action: ${data.action}`, 'received');
+                        if (data.data) {
+                            log(`   Data: ${JSON.stringify(data.data, null, 2)}`, 'received');
+                        }
+                    } catch (e) {
+                        log(`   ⚠️ Not JSON format`, 'error');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    log(`❌ Error: ${error}`, 'error');
+                };
+
+                ws.onclose = () => {
+                    log('🔌 Disconnected', 'info');
+                    updateStatus(false);
+                };
+            } catch (error) {
+                log(`❌ Connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                log('🔌 Connection closed', 'info');
+                updateStatus(false);
+            }
+        }
+
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const jsonMessage = JSON.stringify(message, null, 2);
+                ws.send(JSON.stringify(message));
+                log(`📤 Sent: ${jsonMessage}`, 'sent');
+            } else {
+                log('❌ Not connected! Please connect first.', 'error');
+            }
+        }
+
+        function connectDriver() {
+            const driverIdInput = prompt('Enter Driver ID:', driverId);
+            if (driverIdInput) {
+                driverId = parseInt(driverIdInput);
+                sendMessage({
+                    action: 'ConnectDriver',
+                    driverId: driverId
+                });
+            }
+        }
+
+        function connectClient() {
+            sendMessage({
+                action: 'ConnectClient'
+            });
+        }
+
+        function updateLocation() {
+            const lat = prompt('Enter Latitude:', '30.0444');
+            const lng = prompt('Enter Longitude:', '31.2357');
+            
+            if (lat && lng) {
+                sendMessage({
+                    action: 'UpdateLocation',
+                    location: {
+                        lat: parseFloat(lat),
+                        lng: parseFloat(lng),
+                        timestamp: new Date().toISOString()
+                    }
+                });
+            }
+        }
+
+        function getOnlineDrivers() {
+            sendMessage({
+                action: 'GetOnlineDrivers'
+            });
+        }
+
+        function getDriverLocation() {
+            const driverIdInput = prompt('Enter Driver ID:', driverId);
+            if (driverIdInput) {
+                sendMessage({
+                    action: 'GetDriverLocation',
+                    driverId: parseInt(driverIdInput)
+                });
+            }
+        }
+
+        function ping() {
+            sendMessage({
+                action: 'Ping'
+            });
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Auto-connect on page load (optional)
+        // window.onload = () => {
+        //     setTimeout(connect, 1000);
+        // };
+    </script>
+</body>
+</html>
