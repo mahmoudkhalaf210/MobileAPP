@@ -1,0 +1,17 @@
+﻿using Microsoft.AspNetCore.Identity;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Snap.Core.Entities
+{
+    public class User : IdentityUser
+    {
+        public string FullName { get; set; }
+        public string UserType { get; set; } // Add UserType property (e.g., "Driver", "Passenger")
+        public string? Image { get; set; } = string.Empty;
+        public string Gender { get; set; }
+    }
+}
