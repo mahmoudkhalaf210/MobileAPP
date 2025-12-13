@@ -1,0 +1,128 @@
+{
+	"info": {
+		"_postman_id": "websocket-location-api-2025",
+		"name": "WebSocket Location API - Complete Test",
+		"description": "Complete WebSocket API collection for testing driver location tracking",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "websocket-api"
+	},
+	"item": [
+		{
+			"name": "1. Connect as Client",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "wss://localhost:7155/ws/location",
+					"protocol": "wss",
+					"host": ["localhost"],
+					"port": "7155",
+					"path": ["ws", "location"]
+				},
+				"description": "Connect as a client to receive driver location updates.\n\n**Message to send after connection:**\n```json\n{\n  \"action\": \"ConnectClient\"\n}\n```\n\n**Expected Response:**\n```json\n{\n  \"action\": \"OnlineDrivers\",\n  \"data\": []\n}\n```"
+			}
+		},
+		{
+			"name": "2. Connect as Driver",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "wss://localhost:7155/ws/location",
+					"protocol": "wss",
+					"host": ["localhost"],
+					"port": "7155",
+					"path": ["ws", "location"]
+				},
+				"description": "Connect as a driver to start tracking location.\n\n**Message to send after connection:**\n```json\n{\n  \"action\": \"ConnectDriver\",\n  \"driverId\": 123,\n  \"latitude\": 30.0444,\n  \"longitude\": 31.2357\n}\n```\n\n**Expected Response:**\n```json\n{\n  \"action\": \"DriverConnected\",\n  \"data\": {\n    \"driverId\": 123,\n    \"driverName\": \"Driver Name\",\n    \"lat\": 30.0444,\n    \"lng\": 31.2357,\n    \"lastUpdate\": \"2025-01-15T10:30:00Z\",\n    \"isOnline\": true\n  }\n}\n```"
+			}
+		},
+		{
+			"name": "3. Update Driver Location",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "wss://localhost:7155/ws/location",
+					"protocol": "wss",
+					"host": ["localhost"],
+					"port": "7155",
+					"path": ["ws", "location"]
+				},
+				"description": "Update driver's current location.\n\n**Message to send:**\n```json\n{\n  \"action\": \"UpdateLocation\",\n  \"location\": {\n    \"lat\": 30.0444,\n    \"lng\": 31.2357,\n    \"timestamp\": \"2025-01-15T10:30:00Z\"\n  }\n}\n```\n\n**Note:** Other connected clients will receive `LocationUpdate` message."
+			}
+		},
+		{
+			"name": "4. Get Online Drivers",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "wss://localhost:7155/ws/location",
+					"protocol": "wss",
+					"host": ["localhost"],
+					"port": "7155",
+					"path": ["ws", "location"]
+				},
+				"description": "Request list of all online drivers.\n\n**Message to send:**\n```json\n{\n  \"action\": \"GetOnlineDrivers\"\n}\n```\n\n**Expected Response:**\n```json\n{\n  \"action\": \"OnlineDrivers\",\n  \"data\": [\n    {\n      \"driverId\": 123,\n      \"driverName\": \"Driver Name\",\n      \"lat\": 30.0444,\n      \"lng\": 31.2357,\n      \"lastUpdate\": \"2025-01-15T10:30:00Z\",\n      \"isOnline\": true\n    }\n  ]\n}\n```"
+			}
+		},
+		{
+			"name": "5. Get Driver Location",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "wss://localhost:7155/ws/location",
+					"protocol": "wss",
+					"host": ["localhost"],
+					"port": "7155",
+					"path": ["ws", "location"]
+				},
+				"description": "Get location of a specific driver.\n\n**Message to send:**\n```json\n{\n  \"action\": \"GetDriverLocation\",\n  \"driverId\": 123\n}\n```\n\n**Expected Response:**\n```json\n{\n  \"action\": \"DriverLocation\",\n  \"data\": {\n    \"driverId\": 123,\n    \"driverName\": \"Driver Name\",\n    \"lat\": 30.0444,\n    \"lng\": 31.2357,\n    \"lastUpdate\": \"2025-01-15T10:30:00Z\",\n    \"isOnline\": true\n  }\n}\n```"
+			}
+		},
+		{
+			"name": "6. Ping",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "wss://localhost:7155/ws/location",
+					"protocol": "wss",
+					"host": ["localhost"],
+					"port": "7155",
+					"path": ["ws", "location"]
+				},
+				"description": "Send ping to keep connection alive.\n\n**Message to send:**\n```json\n{\n  \"action\": \"Ping\"\n}\n```\n\n**Expected Response:**\n```json\n{\n  \"action\": \"Pong\",\n  \"data\": {\n    \"timestamp\": \"2025-01-15T10:30:00Z\"\n  }\n}\n```"
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "wss://localhost:7155",
+			"type": "string"
+		},
+		{
+			"key": "ws_path",
+			"value": "/ws/location",
+			"type": "string"
+		},
+		{
+			"key": "driver_id",
+			"value": "123",
+			"type": "string"
+		},
+		{
+			"key": "test_lat",
+			"value": "30.0444",
+			"type": "string"
+		},
+		{
+			"key": "test_lng",
+			"value": "31.2357",
+			"type": "string"
+		}
+	]
+}
