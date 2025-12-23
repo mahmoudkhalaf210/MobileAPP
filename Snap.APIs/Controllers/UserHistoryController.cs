@@ -7,6 +7,7 @@ using Snap.APIs.Errors;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System;
 
 namespace Snap.APIs.Controllers
 {
@@ -25,107 +26,135 @@ namespace Snap.APIs.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateUserHistory([FromBody] CreateUserHistoryDto dto)
         {
-            var user = await _context.Users.FindAsync(dto.UserId);
-            if (user == null)
-                return NotFound(new ApiResponse(404, "User not found"));
-
-
-            var history = new UserHistory
+            try
             {
-                UserId = dto.UserId,
-                From = dto.From,
-                To = dto.To,
-                Price = dto.Price,
-                Date = dto.Date,
-                PaymentMethod = dto.PaymentMethod,
-                RideType = dto.RideType
-            };
+                var user = await _context.Users.FindAsync(dto.UserId);
+                if (user == null)
+                    return NotFound(new ApiResponse(404, "User not found"));
 
-            _context.UserHistories.Add(history);
-            await _context.SaveChangesAsync();
 
-            var result = new UserHistoryDto
+                var history = new UserHistory
+                {
+                    UserId = dto.UserId,
+                    From = dto.From,
+                    To = dto.To,
+                    Price = dto.Price,
+                    Date = dto.Date,
+                    PaymentMethod = dto.PaymentMethod,
+                    RideType = dto.RideType
+                };
+
+                _context.UserHistories.Add(history);
+                await _context.SaveChangesAsync();
+
+                var result = new UserHistoryDto
+                {
+                    Id = history.Id,
+                    UserId = history.UserId,
+                    From = history.From,
+                    To = history.To,
+                    Price = history.Price,
+                    Date = history.Date,
+                    PaymentMethod = history.PaymentMethod,
+                    RideType = history.RideType
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
             {
-                Id = history.Id,
-                UserId = history.UserId,
-                From = history.From,
-                To = history.To,
-                Price = history.Price,
-                Date = history.Date,
-                PaymentMethod = history.PaymentMethod,
-                RideType = history.RideType
-            };
-
-            return Ok(result);
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while creating user history: {ex.Message}"));
+            }
         }
 
         // GET: api/UserHistory
         [HttpGet]
         public async Task<ActionResult<List<UserHistoryDto>>> GetAllUserHistories()
         {
-            var histories = await _context.UserHistories
-                .Select(h => new UserHistoryDto
-                {
-                    Id = h.Id,
-                    UserId = h.UserId,
-                    From = h.From,
-                    To = h.To,
-                    Price = h.Price,
-                    Date = h.Date,
-                    PaymentMethod = h.PaymentMethod,
-                    RideType = h.RideType
-                })
-                .ToListAsync();
+            try
+            {
+                var histories = await _context.UserHistories
+                    .Select(h => new UserHistoryDto
+                    {
+                        Id = h.Id,
+                        UserId = h.UserId,
+                        From = h.From,
+                        To = h.To,
+                        Price = h.Price,
+                        Date = h.Date,
+                        PaymentMethod = h.PaymentMethod,
+                        RideType = h.RideType
+                    })
+                    .ToListAsync();
 
-            return Ok(histories);
+                return Ok(histories);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting all user histories: {ex.Message}"));
+            }
         }
 
         // GET: api/UserHistory/user/{userId}
         [HttpGet("user/{userId}")]
         public async Task<ActionResult<List<UserHistoryDto>>> GetUserHistoriesByUserId(string userId)
         {
-            var histories = await _context.UserHistories
-                .Where(h => h.UserId == userId)
-                .Select(h => new UserHistoryDto
-                {
-                    Id = h.Id,
-                    UserId = h.UserId,
-                    From = h.From,
-                    To = h.To,
-                    Price = h.Price,
-                    Date = h.Date,
-                    PaymentMethod = h.PaymentMethod,
-                    RideType = h.RideType
-                })
-                .ToListAsync();
+            try
+            {
+                var histories = await _context.UserHistories
+                    .Where(h => h.UserId == userId)
+                    .Select(h => new UserHistoryDto
+                    {
+                        Id = h.Id,
+                        UserId = h.UserId,
+                        From = h.From,
+                        To = h.To,
+                        Price = h.Price,
+                        Date = h.Date,
+                        PaymentMethod = h.PaymentMethod,
+                        RideType = h.RideType
+                    })
+                    .ToListAsync();
 
-            if (histories == null || histories.Count == 0)
-                return NotFound(new ApiResponse(404, "No user history found for this userId"));
+                if (histories == null || histories.Count == 0)
+                    return NotFound(new ApiResponse(404, "No user history found for this userId"));
 
-            return Ok(histories);
+                return Ok(histories);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting user histories by user ID: {ex.Message}"));
+            }
         }
 
         // GET: api/UserHistory/{id}
         [HttpGet("{id}")]
         public async Task<ActionResult<UserHistoryDto>> GetUserHistoryById(int id)
         {
-            var history = await _context.UserHistories.FindAsync(id);
-            if (history == null)
-                return NotFound(new ApiResponse(404, "User history not found"));
-
-            var dto = new UserHistoryDto
+            try
             {
-                Id = history.Id,
-                UserId = history.UserId,
-                From = history.From,
-                To = history.To,
-                Price = history.Price,
-                Date = history.Date,
-                PaymentMethod = history.PaymentMethod,
-                RideType = history.RideType
-            };
+                var history = await _context.UserHistories.FindAsync(id);
+                if (history == null)
+                    return NotFound(new ApiResponse(404, "User history not found"));
 
-            return Ok(dto);
+                var dto = new UserHistoryDto
+                {
+                    Id = history.Id,
+                    UserId = history.UserId,
+                    From = history.From,
+                    To = history.To,
+                    Price = history.Price,
+                    Date = history.Date,
+                    PaymentMethod = history.PaymentMethod,
+                    RideType = history.RideType
+                };
+
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting user history: {ex.Message}"));
+            }
         }
     }
 }

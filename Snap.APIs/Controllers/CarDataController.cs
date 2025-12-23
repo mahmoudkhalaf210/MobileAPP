@@ -5,6 +5,7 @@ using Snap.Repository.Data;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Snap.APIs.Errors;
+using System;
 
 namespace Snap.APIs.Controllers
 {
@@ -21,41 +22,55 @@ namespace Snap.APIs.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateCarData([FromBody] CarDataDto dto)
         {
-            var carData = new CarData
+            try
             {
-                CarPhoto = dto.CarPhoto,
-                LicenseFront = dto.LicenseFront,
-                LicenseBack = dto.LicenseBack,
-                CarBrand = dto.CarBrand,
-                CarModel = dto.CarModel,
-                CarColor = dto.CarColor,
-                PlateNumber = dto.PlateNumber,
-                DriverId = dto.DriverId
-            };
-            _context.CarDatas.Add(carData);
-            await _context.SaveChangesAsync();
-            dto.Id = carData.Id;
-            return Ok(dto);
+                var carData = new CarData
+                {
+                    CarPhoto = dto.CarPhoto,
+                    LicenseFront = dto.LicenseFront,
+                    LicenseBack = dto.LicenseBack,
+                    CarBrand = dto.CarBrand,
+                    CarModel = dto.CarModel,
+                    CarColor = dto.CarColor,
+                    PlateNumber = dto.PlateNumber,
+                    DriverId = dto.DriverId
+                };
+                _context.CarDatas.Add(carData);
+                await _context.SaveChangesAsync();
+                dto.Id = carData.Id;
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while creating car data: {ex.Message}"));
+            }
         }
 
         [HttpGet("by-driver/{driverId}")]
         public async Task<ActionResult<CarDataDto>> GetCarDataByDriverId(int driverId)
         {
-            var carData = await _context.CarDatas.FirstOrDefaultAsync(c => c.DriverId == driverId);
-            if (carData == null) return NotFound(new ApiResponse(404, "Car data not found"));
-            var dto = new CarDataDto
+            try
             {
-                Id = carData.Id,
-                CarPhoto = carData.CarPhoto,
-                LicenseFront = carData.LicenseFront,
-                LicenseBack = carData.LicenseBack,
-                CarBrand = carData.CarBrand,
-                CarModel = carData.CarModel,
-                CarColor = carData.CarColor,
-                PlateNumber = carData.PlateNumber,
-                DriverId = carData.DriverId
-            };
-            return Ok(dto);
+                var carData = await _context.CarDatas.FirstOrDefaultAsync(c => c.DriverId == driverId);
+                if (carData == null) return NotFound(new ApiResponse(404, "Car data not found"));
+                var dto = new CarDataDto
+                {
+                    Id = carData.Id,
+                    CarPhoto = carData.CarPhoto,
+                    LicenseFront = carData.LicenseFront,
+                    LicenseBack = carData.LicenseBack,
+                    CarBrand = carData.CarBrand,
+                    CarModel = carData.CarModel,
+                    CarColor = carData.CarColor,
+                    PlateNumber = carData.PlateNumber,
+                    DriverId = carData.DriverId
+                };
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting car data: {ex.Message}"));
+            }
         }
     }
 }

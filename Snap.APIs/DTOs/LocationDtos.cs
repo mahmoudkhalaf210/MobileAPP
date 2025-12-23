@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Snap.APIs.DTOs
 {
@@ -20,8 +21,13 @@ namespace Snap.APIs.DTOs
 
     public class LocationUpdateDto
     {
+        [JsonPropertyName("lat")]
+
         public double Lat { get; set; }
+        [JsonPropertyName("lng")]
+
         public double Lng { get; set; }
+        [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 

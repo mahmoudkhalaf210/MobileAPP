@@ -168,7 +168,14 @@ namespace Snap.APIs.Middlewares
             if (_connectionToDriverMap.TryGetValue(connectionId, out var driverId))
             {
                 var locationElement = jsonDoc.RootElement.GetProperty("location");
-                var location = JsonSerializer.Deserialize<LocationUpdateDto>(locationElement.GetRawText());
+                //var location = JsonSerializer.Deserialize<LocationUpdateDto>(locationElement.GetRawText());
+
+                var location = JsonSerializer.Deserialize<LocationUpdateDto>(
+                                        locationElement.GetRawText(),
+                                        new JsonSerializerOptions
+                                        {
+                                            PropertyNameCaseInsensitive = true
+                                        });
 
                 if (location != null && _onlineDrivers.TryGetValue(driverId, out var driverLocation))
                 {

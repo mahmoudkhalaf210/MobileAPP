@@ -6,6 +6,7 @@ using Snap.APIs.Errors;
 using Snap.Repository.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
+using System;
 
 namespace Snap.APIs.Controllers
 {
@@ -25,100 +26,135 @@ namespace Snap.APIs.Controllers
         [HttpPost("update")]
         public async Task<IActionResult> UpdateDriverLocation([FromBody] DriverLocationDto locationDto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            // Verify driver exists
-            var driver = await _context.Drivers.FirstOrDefaultAsync(d => d.Id == locationDto.DriverId);
-            if (driver == null)
-                return NotFound(new ApiResponse(404, "Driver not found"));
-
-            // Update or create driver location
-            var driverLocation = new DriverLocationResponseDto
+            try
             {
-                DriverId = locationDto.DriverId,
-                DriverName = driver.DriverFullname,
-                Lat = locationDto.Lat,
-                Lng = locationDto.Lng,
-                LastUpdate = locationDto.Timestamp,
-                IsOnline = true
-            };
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
 
-            _driverLocations.AddOrUpdate(locationDto.DriverId, driverLocation, (key, oldValue) => driverLocation);
+                // Verify driver exists
+                var driver = await _context.Drivers.FirstOrDefaultAsync(d => d.Id == locationDto.DriverId);
+                if (driver == null)
+                    return NotFound(new ApiResponse(404, "Driver not found"));
 
-            // Update WebSocket middleware cache
-            Snap.APIs.Middlewares.WebSocketMiddleware.UpdateDriverLocation(driverLocation);
+                // Update or create driver location
+                var driverLocation = new DriverLocationResponseDto
+                {
+                    DriverId = locationDto.DriverId,
+                    DriverName = driver.DriverFullname,
+                    Lat = locationDto.Lat,
+                    Lng = locationDto.Lng,
+                    LastUpdate = locationDto.Timestamp,
+                    IsOnline = true
+                };
 
-            // Broadcast location update to all WebSocket clients
-            await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastLocationUpdate(driverLocation);
+                _driverLocations.AddOrUpdate(locationDto.DriverId, driverLocation, (key, oldValue) => driverLocation);
 
-            return Ok(new { message = "Location updated successfully", location = driverLocation });
+                // Update WebSocket middleware cache
+                Snap.APIs.Middlewares.WebSocketMiddleware.UpdateDriverLocation(driverLocation);
+
+                // Broadcast location update to all WebSocket clients
+                await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastLocationUpdate(driverLocation);
+
+                return Ok(new { message = "Location updated successfully", location = driverLocation });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating driver location: {ex.Message}"));
+            }
         }
 
         // GET: api/location/drivers
         [HttpGet("drivers")]
         public IActionResult GetOnlineDrivers()
         {
-            var onlineDrivers = _driverLocations.Values
-                .Where(d => d.IsOnline && (DateTime.UtcNow - d.LastUpdate).TotalMinutes < 5) // Consider online if updated within 5 minutes
-                .ToList();
+            try
+            {
+                var onlineDrivers = _driverLocations.Values
+                    .Where(d => d.IsOnline && (DateTime.UtcNow - d.LastUpdate).TotalMinutes < 5) // Consider online if updated within 5 minutes
+                    .ToList();
 
-            return Ok(onlineDrivers);
+                return Ok(onlineDrivers);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting online drivers: {ex.Message}"));
+            }
         }
 
         // GET: api/location/driver/{driverId}
         [HttpGet("driver/{driverId}")]
         public IActionResult GetDriverLocation(int driverId)
         {
-            if (_driverLocations.TryGetValue(driverId, out var driverLocation))
+            try
             {
-                // Check if location is recent (within 5 minutes)
-                if ((DateTime.UtcNow - driverLocation.LastUpdate).TotalMinutes < 5)
+                if (_driverLocations.TryGetValue(driverId, out var driverLocation))
                 {
-                    return Ok(driverLocation);
+                    // Check if location is recent (within 5 minutes)
+                    if ((DateTime.UtcNow - driverLocation.LastUpdate).TotalMinutes < 5)
+                    {
+                        return Ok(driverLocation);
+                    }
+                    else
+                    {
+                        driverLocation.IsOnline = false;
+                        return Ok(driverLocation);
+                    }
                 }
-                else
-                {
-                    driverLocation.IsOnline = false;
-                    return Ok(driverLocation);
-                }
-            }
 
-            return NotFound(new ApiResponse(404, "Driver location not found"));
+                return NotFound(new ApiResponse(404, "Driver location not found"));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting driver location: {ex.Message}"));
+            }
         }
 
         // GET: api/location/nearby
         [HttpGet("nearby")]
         public IActionResult GetNearbyDrivers([FromQuery] double lat, [FromQuery] double lng, [FromQuery] double radiusKm = 10)
         {
-            if (lat < -90 || lat > 90)
-                return BadRequest(new ApiResponse(400, "Lat must be between -90 and 90"));
+            try
+            {
+                if (lat < -90 || lat > 90)
+                    return BadRequest(new ApiResponse(400, "Lat must be between -90 and 90"));
 
-            if (lng < -180 || lng > 180)
-                return BadRequest(new ApiResponse(400, "Lng must be between -180 and 180"));
+                if (lng < -180 || lng > 180)
+                    return BadRequest(new ApiResponse(400, "Lng must be between -180 and 180"));
 
-            var nearbyDrivers = _driverLocations.Values
-                .Where(d => d.IsOnline && (DateTime.UtcNow - d.LastUpdate).TotalMinutes < 5)
-                .Where(d => CalculateDistance(lat, lng, d.Lat, d.Lng) <= radiusKm)
-                .OrderBy(d => CalculateDistance(lat, lng, d.Lat, d.Lng))
-                .ToList();
+                var nearbyDrivers = _driverLocations.Values
+                    .Where(d => d.IsOnline && (DateTime.UtcNow - d.LastUpdate).TotalMinutes < 5)
+                    .Where(d => CalculateDistance(lat, lng, d.Lat, d.Lng) <= radiusKm)
+                    .OrderBy(d => CalculateDistance(lat, lng, d.Lat, d.Lng))
+                    .ToList();
 
-            return Ok(nearbyDrivers);
+                return Ok(nearbyDrivers);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting nearby drivers: {ex.Message}"));
+            }
         }
 
         // DELETE: api/location/driver/{driverId}
         [HttpDelete("driver/{driverId}")]
         public async Task<IActionResult> RemoveDriverLocation(int driverId)
         {
-            if (_driverLocations.TryRemove(driverId, out var removedLocation))
+            try
             {
-                // Notify all WebSocket clients that driver was removed
-                await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastDriverRemoved(driverId);
+                if (_driverLocations.TryRemove(driverId, out var removedLocation))
+                {
+                    // Notify all WebSocket clients that driver was removed
+                    await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastDriverRemoved(driverId);
 
-                return Ok(new { message = "Driver location removed", driverId });
+                    return Ok(new { message = "Driver location removed", driverId });
+                }
+
+                return NotFound(new ApiResponse(404, "Driver location not found"));
             }
-
-            return NotFound(new ApiResponse(404, "Driver location not found"));
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while removing driver location: {ex.Message}"));
+            }
         }
 
         // Helper method to calculate distance between two points
