@@ -45,6 +45,9 @@ namespace Snap.APIs
 
             // Add Order Cancellation Background Service
             builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
+            
+            // Add Pending Order Deletion Background Service (Outbox Pattern)
+            builder.Services.AddHostedService<Snap.APIs.Services.PendingOrderDeletionService>();
 
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();

@@ -40,10 +40,6 @@ namespace Snap.APIs.Controllers
                 if (user == null)
                     return NotFound(new ApiResponse(404, "User not found"));
 
-                // Delete expired pending orders (older than 4 minutes) before creating new order
-                await _context.Database.ExecuteSqlRawAsync(
-                    "DELETE FROM Orders WHERE Status = 'pending' AND Date < DATEADD(MINUTE, -4, GETDATE())");
-
                 var order = new Order
                 {
                     UserId = dto.UserId,
