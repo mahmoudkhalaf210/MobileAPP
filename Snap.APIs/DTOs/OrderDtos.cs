@@ -33,6 +33,7 @@ namespace Snap.APIs.DTOs
         public string? PaymentWay { get; set; }
         public string CarType { get; set; }
         public bool PinkMode { get; set; }
+        public string? FCMToken { get; set; }
 
     }
 
@@ -52,7 +53,20 @@ namespace Snap.APIs.DTOs
         public string? PaymentWay { get; set; }
         public string CarType { get; set; }
         public bool PinkMode { get; set; }
+        public string? FCMToken { get; set; }
 
+    }
+
+    public class UpdateOrderStatusDto
+    {
+        public int OrderId { get; set; }
+        public int? Driverid { get; set; }
+    }
+
+    public class UpdateOrderStatusResponseDto
+    {
+        public int OrderId { get; set; }
+        public string? FCMToken { get; set; }
     }
 
     public class UpdateOrderDriverDto

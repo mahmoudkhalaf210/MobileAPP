@@ -57,6 +57,7 @@ namespace Snap.APIs.Services
 
         /// <summary>
         /// Deletes pending orders that are older than the expiration time.
+        /// Uses SQL Server's GETDATE() to ensure time comparison is done using database server time.
         /// </summary>
         private async Task DeleteExpiredPendingOrdersAsync(CancellationToken cancellationToken)
         {
@@ -65,41 +66,28 @@ namespace Snap.APIs.Services
 
             try
             {
-                var expirationThreshold = DateTime.UtcNow.AddMinutes(-ExpirationMinutes);
+                // Use raw SQL with GETDATE() to ensure time comparison uses database server time
+                // This matches the SQL query: DELETE FROM Orders WHERE Status = 'pending' AND Date < DATEADD(MINUTE, -4, GETDATE())
+                var sqlQuery = $@"
+                    delete from Orders
+                    WHERE Status = 'pending' 
+                      AND Date AT TIME ZONE 'UTC' AT TIME ZONE 'Egypt Standard Time' 
+                          <= FORMAT(DATEADD(MINUTE, -4, 
+                              (GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Egypt Standard Time')
+                          ), 'yyyy-MM-dd HH:mm')
+                   ";
 
-                // Find all pending orders older than the expiration threshold
-                var expiredOrders = await context.Orders
-                    .Where(o => o.Status == "pending" && o.Date < expirationThreshold)
-                    .Select(o => new { o.Id, o.Date })
-                    .ToListAsync(cancellationToken);
-
-                if (!expiredOrders.Any())
-                {
-                    _logger.LogDebug("No expired pending orders found.");
-                    return;
-                }
-
-                _logger.LogInformation("Found {Count} expired pending order(s) to delete.", expiredOrders.Count);
-
-                // Delete expired orders
-                var orderIds = expiredOrders.Select(o => o.Id).ToList();
-                var deletedCount = await context.Orders
-                    .Where(o => orderIds.Contains(o.Id) && o.Status == "pending")
-                    .ExecuteDeleteAsync(cancellationToken);
+                var deletedCount = await context.Database.ExecuteSqlRawAsync(sqlQuery, cancellationToken);
 
                 if (deletedCount > 0)
                 {
                     _logger.LogInformation(
-                        "Successfully deleted {DeletedCount} expired pending order(s). Order IDs: {OrderIds}",
-                        deletedCount,
-                        string.Join(", ", orderIds));
+                        "Successfully deleted {DeletedCount} expired pending order(s) using database server time (GETDATE()).",
+                        deletedCount);
                 }
                 else
                 {
-                    _logger.LogWarning(
-                        "Expected to delete {ExpectedCount} orders, but {DeletedCount} were actually deleted. Orders may have been updated by another process.",
-                        expiredOrders.Count,
-                        deletedCount);
+                    _logger.LogDebug("No expired pending orders found.");
                 }
             }
             catch (DbUpdateException dbEx)

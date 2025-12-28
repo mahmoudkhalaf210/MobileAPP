@@ -52,5 +52,6 @@ namespace Snap.Core.Entities
         public string? PaymentWay { get; set; }
         public string CarType { get; set; }
         public bool PinkMode { get; set; }
+        public string? FCMToken { get; set; }
     }
 }

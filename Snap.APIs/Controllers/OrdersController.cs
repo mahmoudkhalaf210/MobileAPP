@@ -56,11 +56,12 @@ namespace Snap.APIs.Controllers
                     UserImage = user.Image,
                     UserName = user.FullName,
                     UserPhone = user.PhoneNumber,
-                    Status = "pending",
+                    Status = OrderStatus.Pending.GetStringValue(),
                     Driverid = null,
                     PaymentWay = dto.PaymentWay,
                     CarType = dto.CarType,
-                    PinkMode = dto.PinkMode
+                    PinkMode = dto.PinkMode,
+                    FCMToken = dto.FCMToken
                 };
 
                 _context.Orders.Add(order);
@@ -87,8 +88,9 @@ namespace Snap.APIs.Controllers
                     Driverid = order.Driverid,
                     Review = order.Review,
                     PaymentWay = order.PaymentWay,
-                    CarType = dto.CarType,
-                    PinkMode = dto.PinkMode
+                    CarType = order.CarType,
+                    PinkMode = order.PinkMode,
+                    FCMToken = order.FCMToken
                 };
 
                 return Ok(result);
@@ -150,7 +152,8 @@ namespace Snap.APIs.Controllers
                         UserPhone = o.UserPhone,
                         PaymentWay = o.PaymentWay,
                         CarType = o.CarType,
-                        PinkMode = o.PinkMode
+                        PinkMode = o.PinkMode,
+                        FCMToken = o.FCMToken
                     })
                     .ToListAsync();
 
@@ -194,7 +197,8 @@ namespace Snap.APIs.Controllers
                     UserPhone = order.UserPhone,
                     PaymentWay = order.PaymentWay,
                     CarType = order.CarType,
-                    PinkMode = order.PinkMode
+                    PinkMode = order.PinkMode,
+                    FCMToken = order.FCMToken
                 };
 
                 return Ok(dto);
@@ -202,6 +206,146 @@ namespace Snap.APIs.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new ApiResponse(500, $"An error occurred while getting order: {ex.Message}"));
+            }
+        }
+
+        // POST: api/Orders/pending
+        [HttpPost("pending")]
+        public async Task<IActionResult> SetOrderPending([FromBody] UpdateOrderStatusDto dto)
+        {
+            try
+            {
+                var order = await _context.Orders.FindAsync(dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                order.Status = OrderStatus.Pending.GetStringValue();
+                order.Driverid = dto.Driverid;
+                await _context.SaveChangesAsync();
+
+                var response = new UpdateOrderStatusResponseDto
+                {
+                    OrderId = order.Id,
+                    FCMToken = order.FCMToken
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating order status: {ex.Message}"));
+            }
+        }
+
+        // POST: api/Orders/approve
+        [HttpPost("approve")]
+        public async Task<IActionResult> SetOrderApproved([FromBody] UpdateOrderStatusDto dto)
+        {
+            try
+            {
+                var order = await _context.Orders.FindAsync(dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                order.Status = OrderStatus.Approved.GetStringValue();
+                order.Driverid = dto.Driverid;
+                await _context.SaveChangesAsync();
+
+                var response = new UpdateOrderStatusResponseDto
+                {
+                    OrderId = order.Id,
+                    FCMToken = order.FCMToken
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating order status: {ex.Message}"));
+            }
+        }
+
+        // POST: api/Orders/cancel
+        [HttpPost("cancel")]
+        public async Task<IActionResult> SetOrderCancel([FromBody] UpdateOrderStatusDto dto)
+        {
+            try
+            {
+                var order = await _context.Orders.FindAsync(dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                order.Status = OrderStatus.Cancel.GetStringValue();
+                order.Driverid = dto.Driverid;
+                await _context.SaveChangesAsync();
+
+                var response = new UpdateOrderStatusResponseDto
+                {
+                    OrderId = order.Id,
+                    FCMToken = order.FCMToken
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating order status: {ex.Message}"));
+            }
+        }
+
+        // POST: api/Orders/arrived
+        [HttpPost("arrived")]
+        public async Task<IActionResult> SetOrderArrived([FromBody] UpdateOrderStatusDto dto)
+        {
+            try
+            {
+                var order = await _context.Orders.FindAsync(dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                order.Status = OrderStatus.Arrived.GetStringValue();
+                order.Driverid = dto.Driverid;
+                await _context.SaveChangesAsync();
+
+                var response = new UpdateOrderStatusResponseDto
+                {
+                    OrderId = order.Id,
+                    FCMToken = order.FCMToken
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating order status: {ex.Message}"));
+            }
+        }
+
+        // POST: api/Orders/complete
+        [HttpPost("complete")]
+        public async Task<IActionResult> SetOrderComplete([FromBody] UpdateOrderStatusDto dto)
+        {
+            try
+            {
+                var order = await _context.Orders.FindAsync(dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                order.Status = OrderStatus.Complete.GetStringValue();
+                order.Driverid = dto.Driverid;
+                await _context.SaveChangesAsync();
+
+                var response = new UpdateOrderStatusResponseDto
+                {
+                    OrderId = order.Id,
+                    FCMToken = order.FCMToken
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating order status: {ex.Message}"));
             }
         }
 
