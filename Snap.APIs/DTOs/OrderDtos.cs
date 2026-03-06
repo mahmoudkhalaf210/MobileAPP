@@ -61,6 +61,7 @@ namespace Snap.APIs.DTOs
     {
         public int OrderId { get; set; }
         public int? Driverid { get; set; }
+        public string? FCMToken { get; set; }
     }
 
     public class UpdateOrderStatusResponseDto
@@ -74,5 +75,13 @@ namespace Snap.APIs.DTOs
         public int OrderId { get; set; }
         public int Driverid { get; set; }
         public string Status { get; set; } = null!;
+        public string? FCMToken { get; set; }
+    }
+
+    public class TestNotificationDto
+    {
+        public string Token { get; set; }
+        public string? Title { get; set; }
+        public string? Body { get; set; }
     }
 }

@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Snap.APIs.DTOs;
 using Snap.APIs.Errors;
 using Snap.Core.Entities;
+using Snap.Core.Services;
 using Snap.Repository.Data;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,10 +18,32 @@ namespace Snap.APIs.Controllers
     public class OrdersController : ControllerBase
     {
         private readonly SnapDbContext _context;
+        private readonly INotificationService _notificationService;
+        private readonly UserManager<User> _userManager;
 
-        public OrdersController(SnapDbContext context)
+        public OrdersController(SnapDbContext context, INotificationService notificationService, UserManager<User> userManager)
         {
             _context = context;
+            _notificationService = notificationService;
+            _userManager = userManager;
+        }
+
+        // POST: api/Orders/test-notification
+        [HttpPost("test-notification")]
+        public async Task<IActionResult> TestNotification([FromBody] TestNotificationDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(dto.Token))
+                    return BadRequest("Token is required");
+
+                await _notificationService.SendNotification(dto.Token, dto.Title ?? "Test Notification", dto.Body ?? "This is a test notification from backend");
+                return Ok("Notification sent");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error sending notification: {ex.Message}");
+            }
         }
 
         // POST: api/Orders
@@ -66,6 +90,27 @@ namespace Snap.APIs.Controllers
 
                 _context.Orders.Add(order);
                 await _context.SaveChangesAsync();
+
+                // Notify all drivers
+                try
+                {
+                    var drivers = await _userManager.GetUsersInRoleAsync("driver");
+                    var driverIds = drivers.Select(d => d.Id).ToList();
+                    var tokens = await _context.FCMTokenUsers
+                        .Where(t => driverIds.Contains(t.UserId))
+                        .Select(t => t.Token)
+                        .ToListAsync();
+
+                    foreach (var token in tokens)
+                    {
+                        if (!string.IsNullOrEmpty(token))
+                            await _notificationService.SendNotification(token, "New Order Available", "Check the app for a new trip request!");
+                    }
+                }
+                catch (Exception)
+                {
+                    // Continue even if notification fails
+                }
 
                 var result = new OrderDto
                 {
@@ -114,6 +159,19 @@ namespace Snap.APIs.Controllers
                 order.Driverid = dto.Driverid;
                 order.Status = dto.Status;
                 await _context.SaveChangesAsync();
+
+                if (order.Status == OrderStatus.Approved.GetStringValue())
+                {
+                    var userToken = await _context.FCMTokenUsers
+                        .Where(t => t.UserId == order.UserId)
+                        .Select(t => t.Token)
+                        .FirstOrDefaultAsync();
+
+                    if (!string.IsNullOrEmpty(userToken))
+                    {
+                        await _notificationService.SendNotification(userToken, "Order Approved", "A driver has accepted your order.");
+                    }
+                }
 
                 return NoContent();
             }
@@ -251,6 +309,8 @@ namespace Snap.APIs.Controllers
                 order.Driverid = dto.Driverid;
                 await _context.SaveChangesAsync();
 
+                await _notificationService.SendNotification(dto.FCMToken ?? order.FCMToken, "Order Approved", "A driver has accepted your order.");
+
                 var response = new UpdateOrderStatusResponseDto
                 {
                     OrderId = order.Id,
@@ -307,6 +367,46 @@ namespace Snap.APIs.Controllers
                 order.Driverid = dto.Driverid;
                 await _context.SaveChangesAsync();
 
+                var userToken = await _context.FCMTokenUsers
+                    .Where(t => t.UserId == order.UserId)
+                    .Select(t => t.Token)
+                    .FirstOrDefaultAsync();
+
+                if (!string.IsNullOrEmpty(userToken))
+                {
+                    await _notificationService.SendNotification(userToken, "Driver Arrived", "Your driver has arrived.");
+                }
+
+                var response = new UpdateOrderStatusResponseDto
+                {
+                    OrderId = order.Id,
+                    FCMToken = order.FCMToken
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating order status: {ex.Message}"));
+            }
+        }
+
+        // POST: api/Orders/started
+        [HttpPost("started")]
+        public async Task<IActionResult> SetOrderStarted([FromBody] UpdateOrderStatusDto dto)
+        {
+            try
+            {
+                var order = await _context.Orders.FindAsync(dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                order.Status = OrderStatus.Started.GetStringValue();
+                order.Driverid = dto.Driverid;
+                await _context.SaveChangesAsync();
+
+                await _notificationService.SendNotification(dto.FCMToken ?? order.FCMToken, "Trip Started", "Your trip has started.");
+
                 var response = new UpdateOrderStatusResponseDto
                 {
                     OrderId = order.Id,
@@ -334,6 +434,30 @@ namespace Snap.APIs.Controllers
                 order.Status = OrderStatus.Complete.GetStringValue();
                 order.Driverid = dto.Driverid;
                 await _context.SaveChangesAsync();
+
+                var userToken = await _context.FCMTokenUsers
+                    .Where(t => t.UserId == order.UserId)
+                    .Select(t => t.Token)
+                    .FirstOrDefaultAsync();
+
+                var driverToken = string.Empty;
+                if (order.Driverid.HasValue)
+                {
+                    var driver = await _context.Drivers.FindAsync(order.Driverid.Value);
+                    if (driver != null)
+                    {
+                        driverToken = await _context.FCMTokenUsers
+                            .Where(t => t.UserId == driver.UserId)
+                            .Select(t => t.Token)
+                            .FirstOrDefaultAsync();
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(userToken))
+                    await _notificationService.SendNotification(userToken, "Trip Completed", "Your trip has been completed.");
+
+                if (!string.IsNullOrEmpty(driverToken))
+                    await _notificationService.SendNotification(driverToken, "Trip Completed", "The trip has been completed.");
 
                 var response = new UpdateOrderStatusResponseDto
                 {

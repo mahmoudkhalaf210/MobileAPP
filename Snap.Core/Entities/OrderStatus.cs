@@ -6,7 +6,8 @@ namespace Snap.Core.Entities
         Approved = 1,   // value: "approve"
         Cancel = 2,     // value: "cancelled"
         Arrived = 3,    // value: "Arrived"
-        Complete = 4    // value: "Complete"
+        Started = 4,    // value: "Started"
+        Complete = 5    // value: "Complete"
     }
 
     public static class OrderStatusExtensions
@@ -19,6 +20,7 @@ namespace Snap.Core.Entities
                 OrderStatus.Approved => "approve",
                 OrderStatus.Cancel => "cancelled",
                 OrderStatus.Arrived => "Arrived",
+                OrderStatus.Started => "Started",
                 OrderStatus.Complete => "Complete",
                 _ => "pending"
             };
@@ -32,6 +34,7 @@ namespace Snap.Core.Entities
                 "approve" => OrderStatus.Approved,
                 "cancelled" => OrderStatus.Cancel,
                 "arrived" => OrderStatus.Arrived,
+                "started" => OrderStatus.Started,
                 "complete" => OrderStatus.Complete,
                 _ => OrderStatus.Pending
             };

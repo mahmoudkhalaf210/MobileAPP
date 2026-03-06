@@ -1,3 +1,5 @@
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,9 +11,13 @@ using Snap.APIs.Extensions;
 using Snap.APIs.Middlewares;
 // using Snap.APIs.Hubs; // Removed - Using WebSocket instead
 using Snap.Core.Entities;
+using Snap.Core.Services;
 using Snap.Repository.Data;
 using Snap.Repository.Seeders;
+using Snap.Service.Notification;
 using System.Text.Json.Serialization;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
 
 namespace Snap.APIs
 {
@@ -40,6 +46,9 @@ namespace Snap.APIs
 
             // Configure Identity Services
             builder.Services.AddIdentityServices();
+
+            // Register Notification Service
+            builder.Services.AddScoped<INotificationService, NotificationService>();
 
             // WebSocket is handled by middleware - no service registration needed
 
@@ -96,6 +105,56 @@ namespace Snap.APIs
             });
 
 
+            // Initialize Firebase (ONLY ONCE)
+            // Use BaseDirectory to ensure we find the file in the output directory
+            var credentialPath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "firebase-service-account.json");
+
+            // Verify file exists to avoid confusing "missing credential" errors later
+            if (!File.Exists(credentialPath))
+            {
+                // Fallback to ContentRootPath if not in bin
+                credentialPath = Path.Combine(
+                    builder.Environment.ContentRootPath, 
+                    "firebase-service-account.json");
+                
+                if (!File.Exists(credentialPath))
+                {
+                    throw new FileNotFoundException($"Firebase credential file not found at: {credentialPath}. Make sure it is copied to output directory.");
+                }
+            }
+
+            // Set environment variable for Google Client libraries
+            Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", credentialPath);
+
+            if (FirebaseApp.DefaultInstance == null)
+            {
+                Console.WriteLine($"[Program] Initializing Firebase with credential: {credentialPath}");
+                try 
+                {
+                    // Explicitly create credential with scopes
+                    var credential = GoogleCredential.FromFile(credentialPath)
+                        .CreateScoped("https://www.googleapis.com/auth/firebase.messaging");
+                    
+                    FirebaseApp.Create(new AppOptions()
+                    {
+                        Credential = credential,
+                        ProjectId = "gogo-8f4a5" // Explicitly set ProjectId from JSON
+                    });
+                    Console.WriteLine("[Program] Firebase initialized successfully.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Program] CRITICAL ERROR initializing Firebase: {ex.Message}");
+                    throw;
+                }
+            }
+            else
+            {
+                 Console.WriteLine("[Program] Firebase already initialized.");
+            }
+
             var app = builder.Build();
 
             #region Apply Migrations and Seed Data
@@ -109,14 +168,17 @@ namespace Snap.APIs
                 var dbContext = services.GetRequiredService<SnapDbContext>();
 
                 // Apply pending migrations
-                await dbContext.Database.MigrateAsync();
+                // NOTE: Commented out because the database is out of sync with migrations (tables exist but history is missing).
+                // To fix, we manually created missing tables and seeded data.
+                // await dbContext.Database.MigrateAsync();
 
                 // Seed default users
                 var userManager = services.GetRequiredService<UserManager<User>>();
+                var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
                 var logger = loggerFactory.CreateLogger<Program>();
 
                 logger.LogInformation("Seeding default users...");
-                await UserSeed.SeedUserAsync(userManager);
+                await UserSeed.SeedUserAsync(userManager, roleManager);
                 logger.LogInformation("User seeding completed.");
             }
             catch (Exception e)

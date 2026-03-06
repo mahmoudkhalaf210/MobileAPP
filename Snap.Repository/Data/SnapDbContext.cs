@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Snap.Core.Entities;
 using System;
@@ -33,5 +33,6 @@ namespace Snap.Repository.Data
         public DbSet<TripsHistory> TripsHistories { get; set; }
         public DbSet<Order> Orders { get; set; }
         public DbSet<UserHistory> UserHistories { get; set; }
+        public DbSet<FCMTokenUser> FCMTokenUsers { get; set; }
     }
 }

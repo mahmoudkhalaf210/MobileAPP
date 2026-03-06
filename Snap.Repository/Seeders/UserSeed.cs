@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Snap.Core.Entities;
 using System;
@@ -11,8 +11,23 @@ namespace Snap.Repository.Seeders
 {
     public class UserSeed
     {
-        public static async Task SeedUserAsync(UserManager<User> userManager)
+        public static async Task SeedUserAsync(UserManager<User> userManager, RoleManager<IdentityRole> roleManager)
         {
+            // Seed Roles
+            if (!await roleManager.Roles.AnyAsync())
+            {
+                var roles = new List<IdentityRole>
+                {
+                    new IdentityRole { Name = "driver" },
+                    new IdentityRole { Name = "passenger" },
+                    new IdentityRole { Name = "admin" }
+                };
+
+                foreach (var role in roles)
+                {
+                    await roleManager.CreateAsync(role);
+                }
+            }
 
 
             if (!await userManager.Users.AnyAsync())
@@ -23,11 +38,17 @@ namespace Snap.Repository.Seeders
                     FullName = "youssef_essam ",
                     UserName = "youssefessam",
                     Email = "youssefessam@gmail.com",
-                    PhoneNumber = "1234567890"
+                    PhoneNumber = "1234567890",
+                    UserType = "admin",
+                    Gender = "male"
                 };
                 var result = await userManager.CreateAsync(user1, "Test1!");
 
-                if (!result.Succeeded)
+                if (result.Succeeded)
+                {
+                    await userManager.AddToRoleAsync(user1, "admin");
+                }
+                else
                 {
                     foreach (var error in result.Errors)
                     {

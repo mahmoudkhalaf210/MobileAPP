@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
@@ -14,6 +14,9 @@ using Twilio.Rest.Api.V2010.Account;
 using Twilio.Types;
 using System;
 
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+
 namespace Snap.APIs.Controllers
 {
     [Route("api/[controller]")]
@@ -22,6 +25,7 @@ namespace Snap.APIs.Controllers
     {
         private readonly UserManager<User> _userManager;
         private readonly SignInManager<User> _signInManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly ITokenService _tokenService;
         private readonly SnapDbContext _context;
         private readonly IConfiguration _configuration;
@@ -31,6 +35,7 @@ namespace Snap.APIs.Controllers
 
         public UsersIdentityController(UserManager<User>userManager ,
             SignInManager<User> signInManager, 
+            RoleManager<IdentityRole> roleManager,
             ITokenService tokenService,
             SnapDbContext context,
             IConfiguration configuration,
@@ -38,6 +43,7 @@ namespace Snap.APIs.Controllers
         {
             _userManager = userManager;
             _signInManager = signInManager;
+            _roleManager = roleManager;
             _tokenService = tokenService;
             _context = context;
             _configuration = configuration;
@@ -125,6 +131,13 @@ namespace Snap.APIs.Controllers
                 };
                 var result = await _userManager.CreateAsync(user, model.password);
                 if (!result.Succeeded) { return BadRequest(new ApiResponse(400 , "Password must be 6-20 characters, with at least 1 uppercase letter, 1 number, and 1 special character (e.g., _, -, @, $, etc.).\"\r\n")); }
+
+                if (!await _roleManager.RoleExistsAsync(model.UserType))
+                {
+                    await _roleManager.CreateAsync(new IdentityRole(model.UserType));
+                }
+                await _userManager.AddToRoleAsync(user, model.UserType);
+
                 var ReturnedUser = new UserDto()
                 {
                     UserId = user.Id,
@@ -318,6 +331,44 @@ namespace Snap.APIs.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new ApiResponse(500, $"An error occurred while getting user image: {ex.Message}"));
+            }
+        }
+        [HttpPost("save-fcm-token")]
+        public async Task<IActionResult> SaveFCMToken([FromBody] FCMTokenDto dto)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(dto.Email))
+                    return BadRequest(new ApiResponse(400, "Email is required."));
+
+                var user = await _userManager.FindByEmailAsync(dto.Email);
+                if (user == null)
+                    return NotFound(new ApiResponse(404, "User not found."));
+
+                var userId = user.Id;
+
+                // Check if token entry exists for this user
+                var existingToken = await _context.FCMTokenUsers.FirstOrDefaultAsync(t => t.UserId == userId);
+                if (existingToken != null)
+                {
+                    existingToken.Token = dto.Token;
+                    _context.FCMTokenUsers.Update(existingToken);
+                }
+                else
+                {
+                    var newToken = new FCMTokenUser
+                    {
+                        UserId = userId,
+                        Token = dto.Token
+                    };
+                    await _context.FCMTokenUsers.AddAsync(newToken);
+                }
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "FCM Token saved successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while saving FCM token: {ex.Message}"));
             }
         }
     }
