@@ -164,6 +164,90 @@ namespace Snap.APIs.Controllers
             }
         }
 
+        // GET: api/Orders
+        [HttpGet]
+        public async Task<ActionResult<List<OrderDto>>> GetAllOrders()
+        {
+            var orders = await _context.Orders
+                .Select(o => new OrderDto
+                {
+                    Id = o.Id,
+                    UserId = o.UserId,
+                    Date = o.Date,
+                    From = o.From,
+                    To = o.To,
+                    FromLatLng = new LatLngDto { Lat = o.FromLatLng.Lat, Lng = o.FromLatLng.Lng },
+                    ToLatLng = new LatLngDto { Lat = o.ToLatLng.Lat, Lng = o.ToLatLng.Lng },
+                    ExpectedPrice = o.ExpectedPrice,
+                    Type = o.Type,
+                    Distance = o.Distance,
+                    Notes = o.Notes,
+                    Review = o.Review,
+                    Driverid = o.Driverid,
+                    Status = o.Status,
+                    NoPassengers = o.NoPassengers,
+                    UserImage = o.UserImage,
+                    UserName = o.UserName,
+                    UserPhone = o.UserPhone,
+                    PaymentWay = o.PaymentWay,
+                    CarType = o.CarType,
+                    PinkMode = o.PinkMode
+                })
+                .ToListAsync();
+
+            return Ok(orders);
+        }
+
+        // GET: api/Orders/{id}
+        [HttpGet("{id}")]
+        public async Task<ActionResult<OrderDto>> GetOrderById(int id)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null)
+                return NotFound(new ApiResponse(404, "Order not found"));
+
+            var dto = new OrderDto
+            {
+                Id = order.Id,
+                UserId = order.UserId,
+                Date = order.Date,
+                From = order.From,
+                To = order.To,
+                FromLatLng = new LatLngDto { Lat = order.FromLatLng.Lat, Lng = order.FromLatLng.Lng },
+                ToLatLng = new LatLngDto { Lat = order.ToLatLng.Lat, Lng = order.ToLatLng.Lng },
+                ExpectedPrice = order.ExpectedPrice,
+                Type = order.Type,
+                Distance = order.Distance,
+                Notes = order.Notes,
+                Review = order.Review,
+                Driverid = order.Driverid,
+                Status = order.Status,
+                NoPassengers = order.NoPassengers,
+                UserImage = order.UserImage,
+                UserName = order.UserName,
+                UserPhone = order.UserPhone,
+                PaymentWay = order.PaymentWay,
+                CarType = order.CarType,
+                PinkMode = order.PinkMode
+            };
+
+            return Ok(dto);
+        }
+
+        // DELETE: api/Orders/{id}
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteOrder(int id)
+        {
+            var order = await _context.Orders.FindAsync(id);
+            if (order == null)
+                return NotFound(new ApiResponse(404, "Order not found"));
+
+            _context.Orders.Remove(order);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+
         private async Task<IActionResult> HandleAcceptOrder(UpdateOrderDriverDto dto)
         {
             var pendingStatus = OrderStatus.Pending.GetStringValue();
