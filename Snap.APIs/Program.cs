@@ -47,6 +47,9 @@ namespace Snap.APIs
             // Configure Identity Services
             builder.Services.AddIdentityServices();
 
+            // Register Driver Location Service (Singleton)
+            builder.Services.AddSingleton<Snap.APIs.Services.IDriverLocationService, Snap.APIs.Services.DriverLocationService>();
+
             // Register Notification Service
             builder.Services.AddScoped<INotificationService, NotificationService>();
 
@@ -55,8 +58,8 @@ namespace Snap.APIs
             // Add Order Cancellation Background Service
             builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
             
-            // Add Pending Order Deletion Background Service (Outbox Pattern)
-            builder.Services.AddHostedService<Snap.APIs.Services.PendingOrderDeletionService>();
+            // Add Pending Order Deletion Background Service (Outbox Pattern) - Removed to avoid conflict with Cancellation Service
+            // builder.Services.AddHostedService<Snap.APIs.Services.PendingOrderDeletionService>();
 
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();

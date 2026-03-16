@@ -1,0 +1,98 @@
+### Snap&Shape API Test Collection
+@baseUrl = https://localhost:7155
+@driverId = 1
+@userId = 6c1369a2-6cf1-4ba4-a6a2-c53bda4362e7
+@fcmToken = fewzqcfvAEPQvhfULpCjij:APA91bGv8rNIyB-nGkPp4fwzqbahUIGfI6MeK19gnt02O-Jd6Nty02DkTJNWeRP4MhFrVs8rzV__gKmvSxzZ2JqHByRpxGIBJZLqzP28UZIDmXwGCLNb5lc
+
+### 1. Make Driver Online
+POST {{baseUrl}}/api/Location/update
+Content-Type: application/json
+
+{
+  "driverId": {{driverId}},
+  "lat": 30.0444,
+  "lng": 31.2357,
+  "timestamp": "2024-03-07T10:00:00Z"
+}
+
+### 2. Create Order
+# @name createOrder
+POST {{baseUrl}}/api/Orders
+Content-Type: application/json
+
+{
+  "userId": "{{userId}}",
+  "date": "2024-03-07T12:00:00Z",
+  "from": "Cairo Tower",
+  "to": "Giza Pyramids",
+  "fromLatLng": {
+    "lat": 30.0444,
+    "lng": 31.2357
+  },
+  "toLatLng": {
+    "lat": 29.9792,
+    "lng": 31.1342
+  },
+  "expectedPrice": 50.0,
+  "type": "Standard",
+  "distance": 12.5,
+  "notes": "Test order via .http",
+  "noPassengers": 2,
+  "paymentWay": "Cash",
+  "carType": "Sedan",
+  "pinkMode": false,
+  "fcmToken": "{{fcmToken}}"
+}
+
+@orderId = {{createOrder.response.body.id}}
+
+### 3. Driver Accepts Order (Approve)
+PUT {{baseUrl}}/api/Orders/driver
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "driverid": {{driverId}},
+  "status": "approve",
+  "fcmToken": "driver-fcm-token"
+}
+
+### 4. Driver Arrived
+PUT {{baseUrl}}/api/Orders/driver
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "driverid": {{driverId}},
+  "status": "arrived"
+}
+
+### 5. Start Trip
+PUT {{baseUrl}}/api/Orders/driver
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "driverid": {{driverId}},
+  "status": "started"
+}
+
+### 6. Complete Trip
+PUT {{baseUrl}}/api/Orders/driver
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "driverid": {{driverId}},
+  "status": "complete"
+}
+
+### 7. Cancel Trip (Alternative Flow)
+PUT {{baseUrl}}/api/Orders/driver
+Content-Type: application/json
+
+{
+  "orderId": {{orderId}},
+  "driverid": {{driverId}},
+  "status": "cancelled"
+}

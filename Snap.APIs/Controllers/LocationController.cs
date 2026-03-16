@@ -7,6 +7,7 @@ using Snap.Repository.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
 using System;
+using Snap.APIs.Services;
 
 namespace Snap.APIs.Controllers
 {
@@ -15,11 +16,12 @@ namespace Snap.APIs.Controllers
     public class LocationController : ControllerBase
     {
         private readonly SnapDbContext _context;
-        private static readonly ConcurrentDictionary<int, DriverLocationResponseDto> _driverLocations = new();
+        private readonly IDriverLocationService _locationService;
 
-        public LocationController(SnapDbContext context)
+        public LocationController(SnapDbContext context, IDriverLocationService locationService)
         {
             _context = context;
+            _locationService = locationService;
         }
 
         // POST: api/location/update
@@ -36,7 +38,10 @@ namespace Snap.APIs.Controllers
                 if (driver == null)
                     return NotFound(new ApiResponse(404, "Driver not found"));
 
-                // Update or create driver location
+                // Update location in service
+                _locationService.UpdateLocation(locationDto.DriverId, driver.DriverFullname, locationDto.Lat, locationDto.Lng);
+
+                // Create response dto for WebSocket
                 var driverLocation = new DriverLocationResponseDto
                 {
                     DriverId = locationDto.DriverId,
@@ -47,9 +52,7 @@ namespace Snap.APIs.Controllers
                     IsOnline = true
                 };
 
-                _driverLocations.AddOrUpdate(locationDto.DriverId, driverLocation, (key, oldValue) => driverLocation);
-
-                // Update WebSocket middleware cache
+                // Update WebSocket middleware cache (Legacy/Current implementation support)
                 Snap.APIs.Middlewares.WebSocketMiddleware.UpdateDriverLocation(driverLocation);
 
                 // Broadcast location update to all WebSocket clients
@@ -69,10 +72,7 @@ namespace Snap.APIs.Controllers
         {
             try
             {
-                var onlineDrivers = _driverLocations.Values
-                    .Where(d => d.IsOnline && (DateTime.UtcNow - d.LastUpdate).TotalMinutes < 5) // Consider online if updated within 5 minutes
-                    .ToList();
-
+                var onlineDrivers = _locationService.GetOnlineDrivers();
                 return Ok(onlineDrivers);
             }
             catch (Exception ex)
@@ -87,18 +87,10 @@ namespace Snap.APIs.Controllers
         {
             try
             {
-                if (_driverLocations.TryGetValue(driverId, out var driverLocation))
+                var driverLocation = _locationService.GetDriverLocation(driverId);
+                if (driverLocation != null)
                 {
-                    // Check if location is recent (within 5 minutes)
-                    if ((DateTime.UtcNow - driverLocation.LastUpdate).TotalMinutes < 5)
-                    {
-                        return Ok(driverLocation);
-                    }
-                    else
-                    {
-                        driverLocation.IsOnline = false;
-                        return Ok(driverLocation);
-                    }
+                    return Ok(driverLocation);
                 }
 
                 return NotFound(new ApiResponse(404, "Driver location not found"));
@@ -121,8 +113,7 @@ namespace Snap.APIs.Controllers
                 if (lng < -180 || lng > 180)
                     return BadRequest(new ApiResponse(400, "Lng must be between -180 and 180"));
 
-                var nearbyDrivers = _driverLocations.Values
-                    .Where(d => d.IsOnline && (DateTime.UtcNow - d.LastUpdate).TotalMinutes < 5)
+                var nearbyDrivers = _locationService.GetOnlineDrivers()
                     .Where(d => CalculateDistance(lat, lng, d.Lat, d.Lng) <= radiusKm)
                     .OrderBy(d => CalculateDistance(lat, lng, d.Lat, d.Lng))
                     .ToList();
@@ -141,15 +132,12 @@ namespace Snap.APIs.Controllers
         {
             try
             {
-                if (_driverLocations.TryRemove(driverId, out var removedLocation))
-                {
-                    // Notify all WebSocket clients that driver was removed
-                    await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastDriverRemoved(driverId);
+                _locationService.RemoveDriver(driverId);
+                
+                // Notify all WebSocket clients that driver was removed
+                await Snap.APIs.Middlewares.WebSocketMiddleware.BroadcastDriverRemoved(driverId);
 
-                    return Ok(new { message = "Driver location removed", driverId });
-                }
-
-                return NotFound(new ApiResponse(404, "Driver location not found"));
+                return Ok(new { message = "Driver location removed", driverId });
             }
             catch (Exception ex)
             {

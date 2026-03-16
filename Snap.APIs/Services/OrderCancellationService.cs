@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Snap.Core.Entities;
+using Snap.Core.Services;
 using Snap.Repository.Data;
 using System;
 using System.Linq;
@@ -49,12 +51,14 @@ namespace Snap.APIs.Services
         {
             using var scope = _serviceProvider.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<SnapDbContext>();
+            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
             var fourMinutesAgo = DateTime.UtcNow.AddMinutes(-4);
+            var pendingStatus = OrderStatus.Pending.GetStringValue();
 
             // Find all pending orders older than 4 minutes
             var expiredOrders = await context.Orders
-                .Where(o => o.Status == "pending" && o.Date < fourMinutesAgo)
+                .Where(o => o.Status == pendingStatus && o.Date < fourMinutesAgo)
                 .ToListAsync(stoppingToken);
 
             if (expiredOrders.Any())
@@ -63,8 +67,32 @@ namespace Snap.APIs.Services
 
                 foreach (var order in expiredOrders)
                 {
-                    order.Status = "cancelled";
+                    order.Status = OrderStatus.Cancel.GetStringValue();
                     _logger.LogInformation($"Order {order.Id} has been automatically cancelled due to timeout.");
+
+                    // Notify User
+                    try 
+                    {
+                        // Get user token if not in order
+                        string? token = order.FCMToken;
+                        if (string.IsNullOrEmpty(token))
+                        {
+                            var userToken = await context.FCMTokenUsers
+                                .Where(t => t.UserId == order.UserId)
+                                .Select(t => t.Token)
+                                .FirstOrDefaultAsync(stoppingToken);
+                            token = userToken;
+                        }
+
+                        if (!string.IsNullOrEmpty(token))
+                        {
+                            await notificationService.SendNotification(token, "Order Cancelled", "We could not find a driver for your order at this time.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Failed to notify user for order {order.Id}");
+                    }
                 }
 
                 await context.SaveChangesAsync(stoppingToken);
