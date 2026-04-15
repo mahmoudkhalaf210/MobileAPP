@@ -48,3 +48,42 @@ This report details the recent backend development tasks completed to enhance th
 ## 3. Next Steps
 *   **Monitoring:** Observe the performance of the new `DriverLocationService` under high load.
 *   **Testing:** Conduct field testing with the Flutter mobile app to verify real-time location updates and notification delivery.
+
+## 4. Flutter Developer Notes (API Updates)
+
+**Date:** 2026-04-09
+
+### A. Location
+- **GET** `/api/Location/driver/{driverId}`
+  - **200 OK**: returns `DriverLocationResponseDto` when location exists in memory.
+  - **200 OK (Offline Driver)**: if driver exists but has no recent cached location, returns:
+    - `isOnline: false`
+    - `lat: 0`, `lng: 0`
+    - `lastUpdate: "0001-01-01T00:00:00"`
+  - **404**: driver not found.
+
+### B. User Trip History (with Driver + Trip details)
+- **GET** `/api/UserHistory/user/{userId}`
+  - Returns a list of `UserHistoryDetailsDto`:
+    - `user`: `{ id, fullName, phoneNumber, email, image, gender }`
+    - `driver`: `{ id, fullName, photo, phoneNumber, email, userId, status, wallet, totalReview, noReviews, gender }`
+    - `trip`: `{ orderId, date, from, to, fromLatLng, toLatLng, expectedPrice, budget, fee, type, distance, notes, noPassengers, paymentWay, carType, pinkMode, status, review }`
+
+### C. Driver Trip History (with User + Driver + Trip details)
+- **GET** `/api/TripsHistory/driver/{driverIdOrUserId}`
+  - Accepts either:
+    - `driverId` (int), or
+    - `driverUserId` (AspNetUsers.Id string)
+  - Returns a list of `DriverTripHistoryDetailsDto` with the same `user/driver/trip` structure as above.
+
+### D. Orders (Live Orders Only)
+- **GET** `/api/Orders`
+  - Returns all orders where `status != "cancelled"`.
+
+### E. User Cancel Order
+- **PUT** `/api/Orders/user/cancel`
+  - Body:
+    - `{ "orderId": 123, "userId": "USER_GUID" }`
+  - Notes:
+    - Rejects cancelling completed orders.
+    - If a driver is assigned, the driver receives an FCM notification.

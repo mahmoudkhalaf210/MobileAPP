@@ -83,7 +83,7 @@ namespace Snap.APIs.Controllers
 
         // GET: api/location/driver/{driverId}
         [HttpGet("driver/{driverId}")]
-        public IActionResult GetDriverLocation(int driverId)
+        public async Task<IActionResult> GetDriverLocation(int driverId)
         {
             try
             {
@@ -93,7 +93,21 @@ namespace Snap.APIs.Controllers
                     return Ok(driverLocation);
                 }
 
-                return NotFound(new ApiResponse(404, "Driver location not found"));
+                var driver = await _context.Drivers.AsNoTracking().FirstOrDefaultAsync(d => d.Id == driverId);
+                if (driver == null)
+                {
+                    return NotFound(new ApiResponse(404, "Driver not found"));
+                }
+
+                return Ok(new DriverLocationResponseDto
+                {
+                    DriverId = driver.Id,
+                    DriverName = driver.DriverFullname,
+                    Lat = 0,
+                    Lng = 0,
+                    LastUpdate = DateTime.MinValue,
+                    IsOnline = false
+                });
             }
             catch (Exception ex)
             {

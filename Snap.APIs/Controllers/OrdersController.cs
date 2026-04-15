@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
+﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Snap.APIs.DTOs;
@@ -164,11 +164,67 @@ namespace Snap.APIs.Controllers
             }
         }
 
+        // PUT: api/Orders/user/cancel
+        [HttpPut("user/cancel")]
+        public async Task<IActionResult> CancelOrderByUser([FromBody] CancelOrderByUserDto dto)
+        {
+            if (dto == null || string.IsNullOrWhiteSpace(dto.UserId))
+                return BadRequest(new ApiResponse(400, "Invalid payload"));
+
+            try
+            {
+                var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == dto.OrderId);
+                if (order == null)
+                    return NotFound(new ApiResponse(404, "Order not found"));
+
+                if (order.UserId != dto.UserId)
+                    return BadRequest(new ApiResponse(403, "You are not allowed to cancel this order."));
+
+                var currentStatus = OrderStatusExtensions.FromString(order.Status ?? OrderStatus.Pending.GetStringValue());
+                if (currentStatus == OrderStatus.Complete)
+                    return BadRequest(new ApiResponse(400, "You cannot cancel a completed order."));
+
+                if (currentStatus == OrderStatus.Cancel)
+                    return Ok(new ApiResponse(200, "Order already cancelled"));
+
+                order.Status = OrderStatus.Cancel.GetStringValue();
+                await _context.SaveChangesAsync();
+
+                if (order.Driverid.HasValue)
+                {
+                    var driverUserId = await _context.Drivers
+                        .Where(d => d.Id == order.Driverid.Value)
+                        .Select(d => d.UserId)
+                        .FirstOrDefaultAsync();
+
+                    if (!string.IsNullOrEmpty(driverUserId))
+                    {
+                        var driverToken = await _context.FCMTokenUsers
+                            .Where(t => t.UserId == driverUserId)
+                            .Select(t => t.Token)
+                            .FirstOrDefaultAsync();
+
+                        if (!string.IsNullOrEmpty(driverToken))
+                        {
+                            await _notificationService.SendNotification(driverToken, "Order Cancelled", "The user cancelled the order.");
+                        }
+                    }
+                }
+
+                return Ok(new ApiResponse(200, "Order cancelled"));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"Error cancelling order: {ex.Message}"));
+            }
+        }
+
         // GET: api/Orders
         [HttpGet]
         public async Task<ActionResult<List<OrderDto>>> GetAllOrders()
         {
             var orders = await _context.Orders
+                .Where(o => o.Status != OrderStatus.Cancel.GetStringValue())
                 .Select(o => new OrderDto
                 {
                     Id = o.Id,

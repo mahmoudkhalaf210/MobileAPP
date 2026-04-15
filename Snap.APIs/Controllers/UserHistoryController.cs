@@ -97,27 +97,69 @@ namespace Snap.APIs.Controllers
 
         // GET: api/UserHistory/user/{userId}
         [HttpGet("user/{userId}")]
-        public async Task<ActionResult<List<UserHistoryDto>>> GetUserHistoriesByUserId(string userId)
+        public async Task<ActionResult<List<UserHistoryDetailsDto>>> GetUserHistoriesByUserId(string userId)
         {
             try
             {
-                var histories = await _context.UserHistories
-                    .Where(h => h.UserId == userId)
-                    .Select(h => new UserHistoryDto
+                var histories = await _context.Orders
+                    .AsNoTracking()
+                    .Where(o => o.UserId == userId && o.Driverid != null)
+                    .OrderByDescending(o => o.Date)
+                    .Select(o => new UserHistoryDetailsDto
                     {
-                        Id = h.Id,
-                        UserId = h.UserId,
-                        From = h.From,
-                        To = h.To,
-                        Price = h.Price,
-                        Date = h.Date,
-                        PaymentMethod = h.PaymentMethod,
-                        RideType = h.RideType
+                        User = new PublicUserInfoDto
+                        {
+                            Id = o.User.Id,
+                            FullName = o.User.FullName,
+                            PhoneNumber = o.User.PhoneNumber,
+                            Email = o.User.Email,
+                            Image = o.User.Image,
+                            Gender = o.User.Gender
+                        },
+                        Driver = _context.Drivers
+                            .AsNoTracking()
+                            .Where(d => d.Id == o.Driverid!.Value)
+                            .Select(d => new PublicDriverInfoDto
+                            {
+                                Id = d.Id,
+                                FullName = d.DriverFullname,
+                                Photo = d.DriverPhoto,
+                                PhoneNumber = d.User.PhoneNumber,
+                                Email = d.User.Email,
+                                UserId = d.UserId,
+                                Status = d.Status,
+                                Wallet = d.Wallet,
+                                TotalReview = d.TotalReview,
+                                NoReviews = d.NoReviews,
+                                Gender = d.User.Gender
+                            })
+                            .FirstOrDefault(),
+                        Trip = new TripDetailsDto
+                        {
+                            OrderId = o.Id,
+                            Date = o.Date,
+                            From = o.From,
+                            To = o.To,
+                            FromLatLng = new LatLngDto { Lat = o.FromLatLng.Lat, Lng = o.FromLatLng.Lng },
+                            ToLatLng = new LatLngDto { Lat = o.ToLatLng.Lat, Lng = o.ToLatLng.Lng },
+                            ExpectedPrice = o.ExpectedPrice,
+                            Budget = o.ExpectedPrice,
+                            Fee = o.ExpectedPrice,
+                            Type = o.Type,
+                            Distance = o.Distance,
+                            Notes = o.Notes,
+                            NoPassengers = o.NoPassengers,
+                            PaymentWay = o.PaymentWay,
+                            CarType = o.CarType,
+                            PinkMode = o.PinkMode,
+                            Status = o.Status,
+                            Review = o.Review
+                        }
                     })
                     .ToListAsync();
 
                 if (histories == null || histories.Count == 0)
-                    return NotFound(new ApiResponse(404, "No user history found for this userId"));
+                    return NotFound(new ApiResponse(404, "No trips found for this userId"));
 
                 return Ok(histories);
             }
