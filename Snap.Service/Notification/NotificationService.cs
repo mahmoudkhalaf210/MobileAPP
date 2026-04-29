@@ -1,13 +1,14 @@
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Snap.Core.Services;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Snap.Service.Notification
 {
     public class NotificationService : INotificationService
     {
-        public async Task SendNotification(string token, string title, string body)
+        public async Task SendNotification(string token, string title, string body, IDictionary<string, string> data = null)
         {
             if (string.IsNullOrEmpty(token)) return;
 
@@ -16,13 +17,6 @@ namespace Snap.Service.Notification
             if (app == null)
             {
                 throw new System.Exception("FirebaseApp.DefaultInstance is null. Firebase was not initialized in Program.cs.");
-            }
-
-            // Debug: Check if credential is present
-            var options = app.Options;
-            if (options.Credential == null)
-            {
-                 throw new System.Exception("FirebaseApp initialized but Credential is NULL.");
             }
 
             var messaging = FirebaseMessaging.GetMessaging(app);
@@ -34,7 +28,8 @@ namespace Snap.Service.Notification
                 {
                     Title = title,
                     Body = body
-                }
+                },
+                Data = data != null ? new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(data) : null
             };
 
             await messaging.SendAsync(message);

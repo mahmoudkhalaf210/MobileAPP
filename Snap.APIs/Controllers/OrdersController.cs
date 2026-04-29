@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Snap.APIs.DTOs;
@@ -41,7 +41,13 @@ namespace Snap.APIs.Controllers
                 if (string.IsNullOrEmpty(dto.Token))
                     return BadRequest("Token is required");
 
-                await _notificationService.SendNotification(dto.Token, dto.Title ?? "Test Notification", dto.Body ?? "This is a test notification from backend");
+                var payload = new Dictionary<string, string>
+                {
+                    { "type", "test" },
+                    { "message", dto.Body ?? "Test message" }
+                };
+
+                await _notificationService.SendNotification(dto.Token, dto.Title ?? "Test Notification", dto.Body ?? "This is a test notification from backend", payload);
                 return Ok("Notification sent");
             }
             catch (Exception ex)
@@ -207,7 +213,21 @@ namespace Snap.APIs.Controllers
 
                         if (!string.IsNullOrEmpty(driverToken))
                         {
-                            await _notificationService.SendNotification(driverToken, "Order Cancelled", "The user cancelled the order.");
+                            var payload = new Dictionary<string, string>
+                            {
+                                { "type", "order_cancelled" },
+                                { "orderId", order.Id.ToString() },
+                                { "customerName", order.UserName ?? "" },
+                                { "userPhone", order.UserPhone ?? "" },
+                                { "customerLat", order.FromLatLng.Lat.ToString() },
+                                { "customerLng", order.FromLatLng.Lng.ToString() },
+                                { "destinationLat", order.ToLatLng.Lat.ToString() },
+                                { "destinationLng", order.ToLatLng.Lng.ToString() },
+                                { "price", order.ExpectedPrice.ToString() },
+                                { "fromPlace", order.From },
+                                { "toPlace", order.To }
+                            };
+                            await _notificationService.SendNotification(driverToken, "Order Cancelled", "The user cancelled the order.", payload);
                         }
                     }
                 }
@@ -327,6 +347,8 @@ namespace Snap.APIs.Controllers
 
             if (order != null)
             {
+                var driver = await _context.Drivers.FindAsync(dto.Driverid);
+                
                 // Notify User
                 // Get User FCM Token
                 var userToken = await _context.FCMTokenUsers
@@ -339,14 +361,41 @@ namespace Snap.APIs.Controllers
 
                 if (!string.IsNullOrEmpty(tokenToSend))
                 {
-                    var driver = await _context.Drivers.FindAsync(dto.Driverid);
                     var driverName = driver?.DriverFullname ?? "A driver";
                     await _notificationService.SendNotification(tokenToSend, "Order Accepted", $"{driverName} has accepted your order!");
                 }
-            }
 
-            // Notify all connected drivers that this order is no longer available
-            _ = WebSocketMiddleware.BroadcastOrderStatusUpdate(new { orderId = dto.OrderId, status = "approved", driverid = dto.Driverid });
+                // Notify all connected drivers that this order is no longer available
+                _ = WebSocketMiddleware.BroadcastOrderStatusUpdate(new { orderId = dto.OrderId, status = "approved", driverid = dto.Driverid });
+
+                // Notify Driver as confirmation (requested payload format)
+                if (driver != null)
+                {
+                    var driverToken = await _context.FCMTokenUsers
+                        .Where(t => t.UserId == driver.UserId)
+                        .Select(t => t.Token)
+                        .FirstOrDefaultAsync();
+
+                    if (!string.IsNullOrEmpty(driverToken))
+                    {
+                        var payload = new Dictionary<string, string>
+                        {
+                            { "type", "order_accepted" },
+                            { "orderId", order.Id.ToString() },
+                            { "customerName", order.UserName ?? "" },
+                            { "userPhone", order.UserPhone ?? "" },
+                            { "customerLat", order.FromLatLng.Lat.ToString() },
+                            { "customerLng", order.FromLatLng.Lng.ToString() },
+                            { "destinationLat", order.ToLatLng.Lat.ToString() },
+                            { "destinationLng", order.ToLatLng.Lng.ToString() },
+                            { "price", order.ExpectedPrice.ToString() },
+                            { "fromPlace", order.From },
+                            { "toPlace", order.To }
+                        };
+                        await _notificationService.SendNotification(driverToken, "Order Accepted", "You have successfully accepted the order.", payload);
+                    }
+                }
+            }
 
             return Ok(new ApiResponse(200, "Order accepted successfully"));
         }
@@ -510,9 +559,24 @@ namespace Snap.APIs.Controllers
                 var eligibleDriverIds = eligibleDrivers.Select(d => d.Id).ToList();
                 await WebSocketMiddleware.BroadcastNewOrderToDrivers(orderDto, eligibleDriverIds);
 
+                var payload = new Dictionary<string, string>
+                {
+                    { "type", "new_order" },
+                    { "orderId", order.Id.ToString() },
+                    { "customerName", order.UserName ?? "" },
+                    { "userPhone", order.UserPhone ?? "" },
+                    { "customerLat", order.FromLatLng.Lat.ToString() },
+                    { "customerLng", order.FromLatLng.Lng.ToString() },
+                    { "destinationLat", order.ToLatLng.Lat.ToString() },
+                    { "destinationLng", order.ToLatLng.Lng.ToString() },
+                    { "price", order.ExpectedPrice.ToString() },
+                    { "fromPlace", order.From },
+                    { "toPlace", order.To }
+                };
+
                 foreach (var token in tokens)
                 {
-                    await _notificationService.SendNotification(token, "New Order Available", "Check the app for a new trip request!");
+                    await _notificationService.SendNotification(token, "New Order Available", "Check the app for a new trip request!", payload);
                 }
             }
             catch (Exception ex)
