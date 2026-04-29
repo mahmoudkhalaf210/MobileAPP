@@ -1,8 +1,9 @@
-﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
+﻿﻿﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Snap.APIs.DTOs;
 using Snap.APIs.Errors;
+using Snap.APIs.Middlewares;
 using Snap.Core.Entities;
 using Snap.Core.Services;
 using Snap.Repository.Data;
@@ -94,10 +95,6 @@ namespace Snap.APIs.Controllers
                 _context.Orders.Add(order);
                 await _context.SaveChangesAsync();
 
-                // Notify nearby drivers
-                // Fire and forget to not block response
-                _ = NotifyDriversAsync(order, dto);
-
                 var result = new OrderDto
                 {
                     Id = order.Id,
@@ -123,6 +120,9 @@ namespace Snap.APIs.Controllers
                     PinkMode = order.PinkMode,
                     FCMToken = order.FCMToken
                 };
+
+                // Notify nearby drivers via FCM + WebSocket (fire and forget)
+                _ = NotifyDriversAsync(order, dto, result);
 
                 return Ok(result);
             }
@@ -189,6 +189,7 @@ namespace Snap.APIs.Controllers
 
                 order.Status = OrderStatus.Cancel.GetStringValue();
                 await _context.SaveChangesAsync();
+                _ = WebSocketMiddleware.BroadcastOrderCancelled(order.Id);
 
                 if (order.Driverid.HasValue)
                 {
@@ -344,6 +345,9 @@ namespace Snap.APIs.Controllers
                 }
             }
 
+            // Notify all connected drivers that this order is no longer available
+            _ = WebSocketMiddleware.BroadcastOrderStatusUpdate(new { orderId = dto.OrderId, status = "approved", driverid = dto.Driverid });
+
             return Ok(new ApiResponse(200, "Order accepted successfully"));
         }
 
@@ -352,9 +356,9 @@ namespace Snap.APIs.Controllers
             var order = await _context.Orders.FindAsync(dto.OrderId);
             if (order == null) return NotFound(new ApiResponse(404, "Order not found"));
 
-            var oldStatus = order.Status;
             order.Status = OrderStatus.Cancel.GetStringValue();
             await _context.SaveChangesAsync();
+            _ = WebSocketMiddleware.BroadcastOrderCancelled(order.Id);
 
             // Notify the OTHER party
             // If Driver cancelled -> Notify User
@@ -413,6 +417,7 @@ namespace Snap.APIs.Controllers
             // Update
             order.Status = targetStatus.GetStringValue();
             await _context.SaveChangesAsync();
+            _ = WebSocketMiddleware.BroadcastOrderStatusUpdate(new { orderId = order.Id, status = order.Status, driverid = order.Driverid });
 
             // Notify User
             var userToken = await _context.FCMTokenUsers
@@ -447,7 +452,7 @@ namespace Snap.APIs.Controllers
             return Ok(new ApiResponse(200, "Order status updated"));
         }
 
-        private async Task NotifyDriversAsync(Order order, CreateOrderDto dto)
+        private async Task NotifyDriversAsync(Order order, CreateOrderDto dto, OrderDto orderDto)
         {
             try
             {
@@ -500,6 +505,10 @@ namespace Snap.APIs.Controllers
 
                 // Deduplicate tokens
                 tokens = tokens.Distinct().Where(t => !string.IsNullOrEmpty(t)).ToList();
+
+                // Broadcast new order via WebSocket to eligible connected drivers
+                var eligibleDriverIds = eligibleDrivers.Select(d => d.Id).ToList();
+                await WebSocketMiddleware.BroadcastNewOrderToDrivers(orderDto, eligibleDriverIds);
 
                 foreach (var token in tokens)
                 {

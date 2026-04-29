@@ -1,5 +1,6 @@
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,15 +10,12 @@ using Microsoft.Extensions.Options;
 using Snap.APIs.Errors;
 using Snap.APIs.Extensions;
 using Snap.APIs.Middlewares;
-// using Snap.APIs.Hubs; // Removed - Using WebSocket instead
 using Snap.Core.Entities;
 using Snap.Core.Services;
 using Snap.Repository.Data;
 using Snap.Repository.Seeders;
 using Snap.Service.Notification;
 using System.Text.Json.Serialization;
-using FirebaseAdmin;
-using Google.Apis.Auth.OAuth2;
 
 namespace Snap.APIs
 {
@@ -86,6 +84,15 @@ namespace Snap.APIs
                 ;
             };});
 
+
+            // Trust the reverse-proxy (nginx) for forwarded headers so the app
+            // knows the real scheme (https) and client IP behind the proxy.
+            builder.Services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                options.KnownNetworks.Clear();
+                options.KnownProxies.Clear();
+            });
 
             builder.Services.AddCors(options =>
             {
@@ -201,17 +208,24 @@ namespace Snap.APIs
                 app.UseSwaggerUI();
             //}
 
+            // Must be first: decode X-Forwarded-For / X-Forwarded-Proto from nginx
+            app.UseForwardedHeaders();
+
             app.UseCors("AllowAll");
 
-            // Enable WebSocket support
-            app.UseWebSockets();
+            // Enable WebSocket support before any middleware that might redirect/close the connection.
+            // UseHttpsRedirection is intentionally omitted — nginx handles SSL termination and
+            // already enforces HTTPS; running it here would break WebSocket upgrade requests that
+            // arrive from nginx over plain HTTP on the internal network.
+            app.UseWebSockets(new WebSocketOptions
+            {
+                KeepAliveInterval = TimeSpan.FromSeconds(30)
+            });
 
-            app.UseHttpsRedirection();
-
-            app.UseAuthentication(); 
+            app.UseAuthentication();
             app.UseAuthorization();
-            
-            // Add WebSocket Middleware (must be after UseWebSockets and before MapControllers)
+
+            // WebSocket Middleware must be after UseWebSockets and before MapControllers
             app.UseMiddleware<WebSocketMiddleware>();
             
             app.MapControllers();

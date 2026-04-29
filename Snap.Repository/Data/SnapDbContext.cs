@@ -34,5 +34,8 @@ namespace Snap.Repository.Data
         public DbSet<Order> Orders { get; set; }
         public DbSet<UserHistory> UserHistories { get; set; }
         public DbSet<FCMTokenUser> FCMTokenUsers { get; set; }
+
+        public DbSet<AppVersion> AppVersions { get; set; }
+        public DbSet<SavedAddress> SavedAddresses { get; set; }
     }
 }

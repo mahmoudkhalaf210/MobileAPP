@@ -16,6 +16,13 @@ namespace Snap.APIs.Middlewares
         private static readonly ConcurrentDictionary<string, int> _connectionToDriverMap = new();
         private static readonly ConcurrentDictionary<int, DriverLocationResponseDto> _onlineDrivers = new();
 
+        // Order WebSocket connections: connectionId -> WebSocket
+        private static readonly ConcurrentDictionary<string, WebSocket> _orderConnections = new();
+        // Map connectionId -> driverId (set when driver subscribes)
+        private static readonly ConcurrentDictionary<string, int> _orderConnectionToDriver = new();
+        // Reverse map driverId -> connectionId (for targeted delivery)
+        private static readonly ConcurrentDictionary<int, string> _driverToOrderConnection = new();
+
         // Static instance to allow access from controllers
         private static WebSocketMiddleware? _instance;
         public static WebSocketMiddleware? Instance => _instance;
@@ -33,7 +40,6 @@ namespace Snap.APIs.Middlewares
             {
                 if (context.WebSockets.IsWebSocketRequest)
                 {
-                    // Accept WebSocket connection
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
                     var connectionId = Guid.NewGuid().ToString();
                     _connections[connectionId] = webSocket;
@@ -42,9 +48,8 @@ namespace Snap.APIs.Middlewares
                     {
                         await HandleWebSocket(webSocket, connectionId);
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
-                        // Log error if needed
                         await HandleDisconnection(connectionId);
                     }
                     finally
@@ -54,7 +59,30 @@ namespace Snap.APIs.Middlewares
                 }
                 else
                 {
-                    // Not a WebSocket request - return 400
+                    context.Response.StatusCode = 400;
+                    await context.Response.WriteAsync("Expected a WebSocket request");
+                }
+            }
+            else if (context.Request.Path == "/ws/orders")
+            {
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    var connectionId = Guid.NewGuid().ToString();
+                    _orderConnections[connectionId] = webSocket;
+
+                    try
+                    {
+                        await HandleOrderWebSocket(webSocket, connectionId);
+                    }
+                    catch (Exception) { }
+                    finally
+                    {
+                        await HandleOrderDisconnection(connectionId);
+                    }
+                }
+                else
+                {
                     context.Response.StatusCode = 400;
                     await context.Response.WriteAsync("Expected a WebSocket request");
                 }
@@ -250,6 +278,129 @@ namespace Snap.APIs.Middlewares
                 }
             }
         }
+
+        // ──────────────────────────────────────────────
+        //  Order WebSocket handlers
+        // ──────────────────────────────────────────────
+
+        private async Task HandleOrderWebSocket(WebSocket webSocket, string connectionId)
+        {
+            var buffer = new byte[1024 * 4];
+
+            while (webSocket.State == WebSocketState.Open)
+            {
+                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed by client", CancellationToken.None);
+                    break;
+                }
+
+                if (result.MessageType == WebSocketMessageType.Text)
+                {
+                    var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    await ProcessOrderMessage(webSocket, connectionId, message);
+                }
+            }
+        }
+
+        private async Task ProcessOrderMessage(WebSocket webSocket, string connectionId, string message)
+        {
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(message);
+                var action = jsonDoc.RootElement.GetProperty("action").GetString();
+
+                switch (action)
+                {
+                    case "Subscribe":
+                        // Driver registers: { "action": "Subscribe", "driverId": 123 }
+                        var driverId = jsonDoc.RootElement.GetProperty("driverId").GetInt32();
+                        _orderConnectionToDriver[connectionId] = driverId;
+                        _driverToOrderConnection[driverId] = connectionId;
+                        await SendMessage(webSocket, new { action = "Subscribed", data = new { driverId } });
+                        break;
+
+                    case "Ping":
+                        await SendMessage(webSocket, new { action = "Pong", data = new { timestamp = DateTime.UtcNow } });
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                await SendError(webSocket, $"Error: {ex.Message}");
+            }
+        }
+
+        private async Task HandleOrderDisconnection(string connectionId)
+        {
+            if (_orderConnectionToDriver.TryRemove(connectionId, out var driverId))
+            {
+                _driverToOrderConnection.TryRemove(driverId, out _);
+            }
+            _orderConnections.TryRemove(connectionId, out _);
+        }
+
+        private async Task BroadcastToOrderConnections(string action, object data)
+        {
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            var message = JsonSerializer.Serialize(new { action, data }, options);
+            var bytes = Encoding.UTF8.GetBytes(message);
+
+            foreach (var connection in _orderConnections.Values)
+            {
+                if (connection.State == WebSocketState.Open)
+                {
+                    try { await connection.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None); }
+                    catch { }
+                }
+            }
+        }
+
+        private async Task BroadcastToTargetDrivers(string action, object data, List<int> driverIds)
+        {
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            var message = JsonSerializer.Serialize(new { action, data }, options);
+            var bytes = Encoding.UTF8.GetBytes(message);
+
+            foreach (var driverId in driverIds)
+            {
+                if (_driverToOrderConnection.TryGetValue(driverId, out var connId)
+                    && _orderConnections.TryGetValue(connId, out var ws)
+                    && ws.State == WebSocketState.Open)
+                {
+                    try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None); }
+                    catch { }
+                }
+            }
+        }
+
+        // Called from OrdersController when a new order is created (targeted to eligible drivers)
+        public static async Task BroadcastNewOrderToDrivers(object orderDto, List<int> driverIds)
+        {
+            if (_instance == null) return;
+            if (driverIds.Count > 0)
+                await _instance.BroadcastToTargetDrivers("NewOrder", orderDto, driverIds);
+            else
+                await _instance.BroadcastToOrderConnections("NewOrder", orderDto);
+        }
+
+        // Called when an order status changes (Accepted, Arrived, Started, Complete)
+        public static async Task BroadcastOrderStatusUpdate(object orderDto)
+        {
+            if (_instance != null)
+                await _instance.BroadcastToOrderConnections("OrderUpdated", orderDto);
+        }
+
+        // Called when an order is cancelled
+        public static async Task BroadcastOrderCancelled(int orderId)
+        {
+            if (_instance != null)
+                await _instance.BroadcastToOrderConnections("OrderCancelled", new { orderId });
+        }
+
+        // ──────────────────────────────────────────────
 
         // Public static method to broadcast from controllers
         public static async Task BroadcastLocationUpdate(DriverLocationResponseDto driverLocation)
