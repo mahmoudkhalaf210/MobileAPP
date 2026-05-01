@@ -258,6 +258,19 @@ namespace Snap.APIs.Controllers
             return Ok(dto);
         }
 
+        // PUT: api/Driver/fcm-token
+        [HttpPut("fcm-token")]
+        public async Task<IActionResult> UpdateFcmToken([FromBody] UpdateFcmTokenDto dto)
+        {
+            var driver = await _context.Drivers.FindAsync(dto.DriverId);
+            if (driver == null)
+                return NotFound(new ApiResponse(404, "Driver not found"));
+
+            driver.FcmToken = dto.FcmToken;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
         [HttpGet("approved")]
         public async Task<IActionResult> GetApprovedDrivers()
         {
