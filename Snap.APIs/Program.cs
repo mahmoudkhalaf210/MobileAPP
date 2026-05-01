@@ -46,6 +46,9 @@ namespace Snap.APIs
             // Add Order Cancellation Background Service
             builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
 
+            // Firebase Cloud Messaging service
+            builder.Services.AddScoped<Snap.APIs.Services.IFcmService, Snap.APIs.Services.FcmService>();
+
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
             builder.Services.Configure<ApiBehaviorOptions>(

@@ -26,6 +26,7 @@ namespace Snap.Core.Entities
         public string Status { get; set; } = "pending";
         public int TotalReview { get; set; }
         public int NoReviews { get; set; }
-        public double Wallet { get; set; } 
+        public double Wallet { get; set; }
+        public string? FcmToken { get; set; }
     }
 }

@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Snap.APIs.DTOs;
 using Snap.APIs.Errors;
+using Snap.APIs.Services;
 using Snap.Core.Entities;
 using Snap.Repository.Data;
 using System.Collections.Generic;
@@ -15,10 +16,14 @@ namespace Snap.APIs.Controllers
     public class OrdersController : ControllerBase
     {
         private readonly SnapDbContext _context;
+        private readonly IFcmService _fcmService;
+        private readonly ILogger<OrdersController> _logger;
 
-        public OrdersController(SnapDbContext context)
+        public OrdersController(SnapDbContext context, IFcmService fcmService, ILogger<OrdersController> logger)
         {
             _context = context;
+            _fcmService = fcmService;
+            _logger = logger;
         }
 
         // POST: api/Orders
@@ -62,6 +67,15 @@ namespace Snap.APIs.Controllers
 
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
+
+            try
+            {
+                await _fcmService.NotifyDriversOfNewOrderAsync(order);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to dispatch FCM notification for order {OrderId}.", order.Id);
+            }
 
             var result = new OrderDto
             {

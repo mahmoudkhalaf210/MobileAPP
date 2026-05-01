@@ -40,6 +40,12 @@ namespace Snap.APIs.DTOs
         public string CarBrand { get; set; } // Added
     }
 
+    public class UpdateFcmTokenDto
+    {
+        public int DriverId { get; set; }
+        public string? FcmToken { get; set; }
+    }
+
     public class ApprovedDriverWithCarDto
     {
         public int DriverId { get; set; }
