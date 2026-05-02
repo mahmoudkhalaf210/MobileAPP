@@ -54,7 +54,7 @@ namespace Snap.APIs
             // WebSocket is handled by middleware - no service registration needed
 
             // Add Order Cancellation Background Service
-            builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
+           // builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
             
             // Add Pending Order Deletion Background Service (Outbox Pattern) - Removed to avoid conflict with Cancellation Service
             // builder.Services.AddHostedService<Snap.APIs.Services.PendingOrderDeletionService>();

@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Snap.APIs.DTOs;
@@ -128,8 +128,8 @@ namespace Snap.APIs.Controllers
                 };
 
                 // Notify nearby drivers via FCM + WebSocket (fire and forget)
-                _ = NotifyDriversAsync(order, dto, result);
-
+               // _ = NotifyDriversAsync(order, dto, result);
+                await NotifyDriversAsync(order, dto, result);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -348,21 +348,31 @@ namespace Snap.APIs.Controllers
             if (order != null)
             {
                 var driver = await _context.Drivers.FindAsync(dto.Driverid);
+                var driverName = driver?.DriverFullname ?? "A driver";
                 
-                // Notify User
-                // Get User FCM Token
+                // Notify User with data payload
                 var userToken = await _context.FCMTokenUsers
                     .Where(t => t.UserId == order.UserId)
                     .Select(t => t.Token)
                     .FirstOrDefaultAsync();
                 
-                // Also check order.FCMToken as fallback or primary if user is transient
                 var tokenToSend = userToken ?? order.FCMToken;
-
                 if (!string.IsNullOrEmpty(tokenToSend))
                 {
-                    var driverName = driver?.DriverFullname ?? "A driver";
-                    await _notificationService.SendNotification(tokenToSend, "Order Accepted", $"{driverName} has accepted your order!");
+                    var userPayload = new Dictionary<string, string>
+                    {
+                        { "type", "order_approved" },
+                        { "orderId", order.Id.ToString() },
+                        { "driverName", driverName },
+                        { "customerLat", order.FromLatLng.Lat.ToString() },
+                        { "customerLng", order.FromLatLng.Lng.ToString() },
+                        { "destinationLat", order.ToLatLng.Lat.ToString() },
+                        { "destinationLng", order.ToLatLng.Lng.ToString() },
+                        { "price", order.ExpectedPrice.ToString() },
+                        { "fromPlace", order.From },
+                        { "toPlace", order.To }
+                    };
+                    await _notificationService.SendNotification(tokenToSend, "Order Accepted", $"{driverName} has accepted your order!", userPayload);
                 }
 
                 // Notify all connected drivers that this order is no longer available
@@ -378,7 +388,7 @@ namespace Snap.APIs.Controllers
 
                     if (!string.IsNullOrEmpty(driverToken))
                     {
-                        var payload = new Dictionary<string, string>
+                        var driverPayload = new Dictionary<string, string>
                         {
                             { "type", "order_accepted" },
                             { "orderId", order.Id.ToString() },
@@ -392,7 +402,7 @@ namespace Snap.APIs.Controllers
                             { "fromPlace", order.From },
                             { "toPlace", order.To }
                         };
-                        await _notificationService.SendNotification(driverToken, "Order Accepted", "You have successfully accepted the order.", payload);
+                        await _notificationService.SendNotification(driverToken, "Order Accepted", "You have successfully accepted the order.", driverPayload);
                     }
                 }
             }
@@ -409,31 +419,52 @@ namespace Snap.APIs.Controllers
             await _context.SaveChangesAsync();
             _ = WebSocketMiddleware.BroadcastOrderCancelled(order.Id);
 
-            // Notify the OTHER party
-            // If Driver cancelled -> Notify User
-            // If User cancelled (implied if DriverId in DTO is 0 or mismatch, but this endpoint seems to be for Driver actions usually)
-            // But let's handle generic cancellation.
+            var payload = new Dictionary<string, string>
+            {
+                { "type", "order_cancelled" },
+                { "orderId", order.Id.ToString() },
+                { "customerName", order.UserName ?? "" },
+                { "userPhone", order.UserPhone ?? "" },
+                { "customerLat", order.FromLatLng.Lat.ToString() },
+                { "customerLng", order.FromLatLng.Lng.ToString() },
+                { "destinationLat", order.ToLatLng.Lat.ToString() },
+                { "destinationLng", order.ToLatLng.Lng.ToString() },
+                { "price", order.ExpectedPrice.ToString() },
+                { "fromPlace", order.From },
+                { "toPlace", order.To }
+            };
 
-            // If we have a driver assigned, and this is a cancellation
+            // Notify User
+            var userToken = await _context.FCMTokenUsers
+                .Where(t => t.UserId == order.UserId)
+                .Select(t => t.Token)
+                .FirstOrDefaultAsync() ?? order.FCMToken;
+
+            if (!string.IsNullOrEmpty(userToken))
+            {
+                await _notificationService.SendNotification(userToken, "Order Cancelled", "Your order has been cancelled.", payload);
+            }
+
+            // Notify Driver (if assigned)
             if (order.Driverid.HasValue)
             {
-                // Notify User
-                 var userToken = await _context.FCMTokenUsers
-                    .Where(t => t.UserId == order.UserId)
-                    .Select(t => t.Token)
-                    .FirstOrDefaultAsync() ?? order.FCMToken;
+                var driverUserId = await _context.Drivers
+                    .Where(d => d.Id == order.Driverid.Value)
+                    .Select(d => d.UserId)
+                    .FirstOrDefaultAsync();
 
-                if (!string.IsNullOrEmpty(userToken))
+                if (!string.IsNullOrEmpty(driverUserId))
                 {
-                    await _notificationService.SendNotification(userToken, "Order Cancelled", "Your order has been cancelled.");
-                }
+                    var driverToken = await _context.FCMTokenUsers
+                        .Where(t => t.UserId == driverUserId)
+                        .Select(t => t.Token)
+                        .FirstOrDefaultAsync();
 
-                // If User cancelled, we might want to notify Driver (but this endpoint name UpdateOrderDriver suggests it's driver action)
-                // Assuming this endpoint is used by Driver App mainly.
-            }
-            else
-            {
-                 // No driver yet, just cancel.
+                    if (!string.IsNullOrEmpty(driverToken))
+                    {
+                        await _notificationService.SendNotification(driverToken, "Order Cancelled", "The order has been cancelled.", payload);
+                    }
+                }
             }
 
             return Ok(new ApiResponse(200, "Order cancelled"));
@@ -445,28 +476,75 @@ namespace Snap.APIs.Controllers
             if (order == null) return NotFound(new ApiResponse(404, "Order not found"));
 
             // Verify Driver
-            if (order.Driverid != dto.Driverid)
-            {
-                return BadRequest(new ApiResponse(403, "You are not the assigned driver for this order."));
-            }
+            //if (order.Driverid != dto.Driverid)
+            //{
+            //    return BadRequest(new ApiResponse(403, "You are not the assigned driver for this order."));
+            //}
 
             // Validate Transitions
             var currentStatus = OrderStatusExtensions.FromString(order.Status);
             bool isValid = false;
 
-            if (currentStatus == OrderStatus.Approved && targetStatus == OrderStatus.Arrived) isValid = true;
-            else if (currentStatus == OrderStatus.Arrived && targetStatus == OrderStatus.Started) isValid = true;
-            else if (currentStatus == OrderStatus.Started && targetStatus == OrderStatus.Complete) isValid = true;
-
-            if (!isValid)
-            {
-                 return BadRequest(new ApiResponse(400, $"Invalid status transition from {currentStatus} to {targetStatus}"));
-            }
+            //if (currentStatus == OrderStatus.Approved && targetStatus == OrderStatus.Arrived) isValid = true;
+            //else if (currentStatus == OrderStatus.Arrived && targetStatus == OrderStatus.Started) isValid = true;
+            //else if (currentStatus == OrderStatus.Started && targetStatus == OrderStatus.Complete) isValid = true;
+            //else if(currentStatus == OrderStatus.Pending && targetStatus == OrderStatus.Approved) isValid = true; // Allow direct transition from Pending to Approved for flexibility
+            //if (!isValid)
+            //{
+            //    return BadRequest(new ApiResponse(400, $"Invalid status transition from {currentStatus} to {targetStatus}"));
+            //}
 
             // Update
             order.Status = targetStatus.GetStringValue();
             await _context.SaveChangesAsync();
             _ = WebSocketMiddleware.BroadcastOrderStatusUpdate(new { orderId = order.Id, status = order.Status, driverid = order.Driverid });
+
+            // Determine notification type
+            string notificationType = "";
+            string userTitle = "Update";
+            string userBody = "Order updated";
+            string driverTitle = "Update";
+            string driverBody = "Order updated";
+
+            switch (targetStatus)
+            {
+                case OrderStatus.Arrived:
+                    notificationType = "driver_arrived";
+                    userTitle = "Driver Arrived";
+                    userBody = "Your driver has arrived at the pickup location.";
+                    driverTitle = "Arrived";
+                    driverBody = "You have arrived at the pickup location.";
+                    break;
+                case OrderStatus.Started:
+                    notificationType = "trip_started";
+                    userTitle = "Trip Started";
+                    userBody = "Your trip has started. Enjoy the ride!";
+                    driverTitle = "Trip Started";
+                    driverBody = "The trip has started.";
+                    break;
+                case OrderStatus.Complete:
+                    notificationType = "trip_completed";
+                    userTitle = "Trip Completed";
+                    userBody = "You have arrived at your destination.";
+                    driverTitle = "Trip Completed";
+                    driverBody = "The trip has been completed.";
+                    break;
+            }
+
+            var payload = new Dictionary<string, string>
+            {
+                { "type", notificationType },
+                { "orderId", order.Id.ToString() },
+                { "customerName", order.UserName ?? "" },
+                { "userPhone", order.UserPhone ?? "" },
+                { "customerLat", order.FromLatLng.Lat.ToString() },
+                { "customerLng", order.FromLatLng.Lng.ToString() },
+                { "destinationLat", order.ToLatLng.Lat.ToString() },
+                { "destinationLng", order.ToLatLng.Lng.ToString() },
+                { "price", order.ExpectedPrice.ToString() },
+                { "fromPlace", order.From },
+                { "toPlace", order.To }
+            };
 
             // Notify User
             var userToken = await _context.FCMTokenUsers
@@ -476,26 +554,29 @@ namespace Snap.APIs.Controllers
 
             if (!string.IsNullOrEmpty(userToken))
             {
-                string title = "Update";
-                string body = "Order updated";
-                
-                switch (targetStatus)
-                {
-                    case OrderStatus.Arrived:
-                        title = "Driver Arrived";
-                        body = "Your driver has arrived at the pickup location.";
-                        break;
-                    case OrderStatus.Started:
-                        title = "Trip Started";
-                        body = "Your trip has started. Enjoy the ride!";
-                        break;
-                    case OrderStatus.Complete:
-                        title = "Trip Completed";
-                        body = "You have arrived at your destination.";
-                        break;
-                }
+                await _notificationService.SendNotification(userToken, userTitle, userBody, payload);
+            }
 
-                await _notificationService.SendNotification(userToken, title, body);
+            // Notify Driver
+            if (order.Driverid.HasValue)
+            {
+                var driverUserId = await _context.Drivers
+                    .Where(d => d.Id == order.Driverid.Value)
+                    .Select(d => d.UserId)
+                    .FirstOrDefaultAsync();
+
+                if (!string.IsNullOrEmpty(driverUserId))
+                {
+                    var driverToken = await _context.FCMTokenUsers
+                        .Where(t => t.UserId == driverUserId)
+                        .Select(t => t.Token)
+                        .FirstOrDefaultAsync();
+
+                    if (!string.IsNullOrEmpty(driverToken))
+                    {
+                        await _notificationService.SendNotification(driverToken, driverTitle, driverBody, payload);
+                    }
+                }
             }
 
             return Ok(new ApiResponse(200, "Order status updated"));
@@ -505,59 +586,22 @@ namespace Snap.APIs.Controllers
         {
             try
             {
-                // 1. Get online drivers from memory
-                var onlineDrivers = _locationService.GetOnlineDrivers();
+                // Get ALL drivers from Drivers table
+                var allDrivers = await _context.Drivers.ToListAsync();
+                var allDriverUserIds = allDrivers.Select(d => d.UserId).ToList();
 
-                // 2. Filter by distance (e.g. 10km)
-                var nearbyDrivers = onlineDrivers
-                    .Where(d => CalculateDistance(dto.FromLatLng.Lat, dto.FromLatLng.Lng, d.Lat, d.Lng) <= 10)
-                    .ToList();
-
-                if (!nearbyDrivers.Any()) return;
-
-                var driverIds = nearbyDrivers.Select(d => d.DriverId).ToList();
-                
-                // 3. Get driver details for further filtering (PinkMode, CarType)
-                // We need to check database for these static properties
-                var driversQuery = _context.Drivers
-                    .Include(d => d.User)
-                    // .Include(d => d.CarData) // Removed due to missing navigation property
-                    .Where(d => driverIds.Contains(d.Id));
-
-                // Filter by PinkMode
-                if (dto.PinkMode)
-                {
-                    driversQuery = driversQuery.Where(d => d.User.Gender == "Female");
-                }
-
-                // Filter by CarType
-                if (!string.IsNullOrEmpty(dto.CarType))
-                {
-                     // Assuming CarData has Type or similar.
-                     // Since I don't see CarType in Driver entity directly, I check CarData
-                     // If CarData is not null.
-                     // Let's assume strict filtering if CarType is provided.
-                     // Note: I need to be sure CarData has a type field matching dto.CarType
-                     // For now, I'll skip strict CarType check to avoid runtime error if field mismatch, 
-                     // or I can try:
-                     // driversQuery = driversQuery.Where(d => d.CarData.Type == dto.CarType);
-                }
-
-                var eligibleDrivers = await driversQuery.ToListAsync();
-                var eligibleUserIds = eligibleDrivers.Select(d => d.UserId).ToList();
-
-                // 4. Get FCM tokens
+                // Get FCM tokens for ALL drivers
                 var tokens = await _context.FCMTokenUsers
-                    .Where(t => eligibleUserIds.Contains(t.UserId))
+                    .Where(t => allDriverUserIds.Contains(t.UserId))
                     .Select(t => t.Token)
                     .ToListAsync();
 
                 // Deduplicate tokens
                 tokens = tokens.Distinct().Where(t => !string.IsNullOrEmpty(t)).ToList();
 
-                // Broadcast new order via WebSocket to eligible connected drivers
-                var eligibleDriverIds = eligibleDrivers.Select(d => d.Id).ToList();
-                await WebSocketMiddleware.BroadcastNewOrderToDrivers(orderDto, eligibleDriverIds);
+                // Broadcast new order via WebSocket
+                var allDriverIds = allDrivers.Select(d => d.Id).ToList();
+                await WebSocketMiddleware.BroadcastNewOrderToDrivers(orderDto, allDriverIds);
 
                 var payload = new Dictionary<string, string>
                 {
@@ -581,7 +625,6 @@ namespace Snap.APIs.Controllers
             }
             catch (Exception ex)
             {
-                // Log error
                 Console.WriteLine($"Error notifying drivers: {ex.Message}");
             }
         }
