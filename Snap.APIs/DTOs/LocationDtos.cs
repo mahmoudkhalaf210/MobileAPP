@@ -39,5 +39,10 @@ namespace Snap.APIs.DTOs
         public double Lng { get; set; }
         public DateTime LastUpdate { get; set; }
         public bool IsOnline { get; set; }
+        /// <summary>
+        /// False while the driver has an active order (Approved → Started).
+        /// Reset to true when the trip completes or is cancelled.
+        /// </summary>
+        public bool IsAvailable { get; set; } = true;
     }
 }

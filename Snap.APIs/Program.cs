@@ -51,6 +51,21 @@ namespace Snap.APIs
             // Register Notification Service
             builder.Services.AddScoped<INotificationService, NotificationService>();
 
+            // Bind OrderSettings from appsettings.json
+            builder.Services.Configure<Snap.APIs.Settings.OrderSettings>(
+                builder.Configuration.GetSection(Snap.APIs.Settings.OrderSettings.SectionName));
+
+            // Register Order Service
+            builder.Services.AddScoped<Snap.APIs.Services.IOrderService, Snap.APIs.Services.OrderService>();
+
+            // Background job queue (singleton bounded channel) + multi-worker processor
+            builder.Services.AddSingleton<Snap.APIs.Services.IBackgroundJobQueue, Snap.APIs.Services.BackgroundJobQueue>();
+            builder.Services.AddHostedService<Snap.APIs.Services.BackgroundJobProcessor>();
+
+            // Startup service: seeds busy-driver availability from DB so restarts
+            // don't accidentally mark active-trip drivers as available again
+            builder.Services.AddHostedService<Snap.APIs.Services.DriverAvailabilityInitializer>();
+
             // WebSocket is handled by middleware - no service registration needed
 
             // Add Order Cancellation Background Service

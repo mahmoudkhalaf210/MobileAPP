@@ -126,7 +126,7 @@ namespace Snap.APIs.Controllers
                     Email = model.Email,
                     UserName = model.Email.Split('@')[0],
                     PhoneNumber = model.PhoneNumber,
-                    UserType = model.UserType, // Set user type
+                    UserType = model.UserType,
                     Gender = model.Gender
                 };
                 var result = await _userManager.CreateAsync(user, model.password);
@@ -146,7 +146,7 @@ namespace Snap.APIs.Controllers
                     PhoneNumber = user.PhoneNumber,
                     Token = await _tokenService.CreateTokenAsync(user , _userManager),
                     UserType = user.UserType,
-                    Gender = user.Gender,
+                    Gender = user.Gender
                 };
                 _otpStore.TryRemove(model.PhoneNumber, out _);
                 return Ok(ReturnedUser);
