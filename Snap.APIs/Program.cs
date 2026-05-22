@@ -45,28 +45,36 @@ namespace Snap.APIs
             // Configure Identity Services
             builder.Services.AddIdentityServices();
 
-            // Register Driver Location Service (Singleton)
-            builder.Services.AddSingleton<Snap.APIs.Services.IDriverLocationService, Snap.APIs.Services.DriverLocationService>();
+            // ── Location / driver state (singleton — shared across all requests) ────
+            builder.Services.AddSingleton<Snap.APIs.Services.IDriverLocationService,
+                                          Snap.APIs.Services.DriverLocationService>();
 
-            // Register Notification Service
+            // ── WebSocket hub + handlers (singletons — own the connection dicts) ──
+            builder.Services.AddSingleton<Snap.APIs.WebSockets.IWebSocketHub,
+                                          Snap.APIs.WebSockets.WebSocketHub>();
+            builder.Services.AddSingleton<Snap.APIs.WebSockets.ILocationWebSocketHandler,
+                                          Snap.APIs.WebSockets.LocationWebSocketHandler>();
+            builder.Services.AddSingleton<Snap.APIs.WebSockets.IOrderWebSocketHandler,
+                                          Snap.APIs.WebSockets.OrderWebSocketHandler>();
+
+            // ── Notification (scoped — uses DbContext + FCM per request/job) ───────
             builder.Services.AddScoped<INotificationService, NotificationService>();
+            builder.Services.AddScoped<Snap.APIs.Services.IOrderNotificationService,
+                                       Snap.APIs.Services.OrderNotificationService>();
 
-            // Bind OrderSettings from appsettings.json
+            // ── Order business logic (scoped) ─────────────────────────────────────
             builder.Services.Configure<Snap.APIs.Settings.OrderSettings>(
                 builder.Configuration.GetSection(Snap.APIs.Settings.OrderSettings.SectionName));
+            builder.Services.AddScoped<Snap.APIs.Services.IOrderService,
+                                       Snap.APIs.Services.OrderService>();
 
-            // Register Order Service
-            builder.Services.AddScoped<Snap.APIs.Services.IOrderService, Snap.APIs.Services.OrderService>();
-
-            // Background job queue (singleton bounded channel) + multi-worker processor
-            builder.Services.AddSingleton<Snap.APIs.Services.IBackgroundJobQueue, Snap.APIs.Services.BackgroundJobQueue>();
+            // ── Background job infrastructure (singletons) ────────────────────────
+            builder.Services.AddSingleton<Snap.APIs.Services.IBackgroundJobQueue,
+                                          Snap.APIs.Services.BackgroundJobQueue>();
             builder.Services.AddHostedService<Snap.APIs.Services.BackgroundJobProcessor>();
 
-            // Startup service: seeds busy-driver availability from DB so restarts
-            // don't accidentally mark active-trip drivers as available again
+            // ── Startup seeders ───────────────────────────────────────────────────
             builder.Services.AddHostedService<Snap.APIs.Services.DriverAvailabilityInitializer>();
-
-            // WebSocket is handled by middleware - no service registration needed
 
             // Add Order Cancellation Background Service
            // builder.Services.AddHostedService<Snap.APIs.Services.OrderCancellationService>();
