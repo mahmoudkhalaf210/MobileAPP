@@ -68,6 +68,13 @@ namespace Snap.APIs.Controllers
 
             try
             {
+                if (string.Equals(dto.Status, "scheduled_accepted", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(dto.Status, "accepted_scheduled", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _orderService.AcceptScheduledOrderAsync(dto);
+                    return Ok(new ApiResponse(200, "Scheduled order accepted successfully"));
+                }
+
                 var targetStatus = OrderStatusExtensions.FromString(dto.Status);
 
                 if (targetStatus == OrderStatus.Approved)
@@ -108,6 +115,21 @@ namespace Snap.APIs.Controllers
         {
             var orders = await _orderService.GetAllOrdersAsync();
             return Ok(orders);
+        }
+
+        // GET: api/orders/user/{userId}/scheduled
+        [HttpGet("user/{userId}/scheduled")]
+        public async Task<ActionResult<List<OrderDto>>> GetScheduledOrdersForUser(string userId)
+        {
+            try
+            {
+                var orders = await _orderService.GetScheduledOrdersByUserAsync(userId);
+                return Ok(orders);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, ex.Message));
+            }
         }
 
         // GET: api/orders/{id}

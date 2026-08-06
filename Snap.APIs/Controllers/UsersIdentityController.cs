@@ -371,5 +371,143 @@ namespace Snap.APIs.Controllers
                 return StatusCode(500, new ApiResponse(500, $"An error occurred while saving FCM token: {ex.Message}"));
             }
         }
+
+        [HttpGet("Profile/{userId}")]
+        public async Task<ActionResult<UserProfileDto>> GetProfile(string userId)
+        {
+            try
+            {
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new ApiResponse(404, "User not found."));
+
+                var claims = await _userManager.GetClaimsAsync(user);
+                var emergencyName = claims.FirstOrDefault(c => c.Type == "emergency_contact_name")?.Value;
+                var emergencyPhone = claims.FirstOrDefault(c => c.Type == "emergency_contact_phone")?.Value;
+
+                return Ok(new UserProfileDto
+                {
+                    UserId = user.Id,
+                    FullName = user.FullName,
+                    PhoneNumber = user.PhoneNumber,
+                    Email = user.Email,
+                    Image = user.Image ?? string.Empty,
+                    UserType = user.UserType,
+                    Gender = user.Gender,
+                    EmergencyContact = string.IsNullOrWhiteSpace(emergencyName) && string.IsNullOrWhiteSpace(emergencyPhone)
+                        ? null
+                        : new EmergencyContactDto { Name = emergencyName, PhoneNumber = emergencyPhone }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting user profile: {ex.Message}"));
+            }
+        }
+
+        [HttpPut("UpdateProfile/{userId}")]
+        public async Task<IActionResult> UpdateProfile(string userId, [FromBody] UpdateUserProfileDto dto)
+        {
+            try
+            {
+                if (dto == null)
+                    return BadRequest(new ApiResponse(400, "Invalid payload"));
+
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new ApiResponse(404, "User not found."));
+
+                if (!string.IsNullOrWhiteSpace(dto.PhoneNumber))
+                {
+                    var phoneInUse = await _userManager.Users.AnyAsync(u => u.PhoneNumber == dto.PhoneNumber && u.Id != userId);
+                    if (phoneInUse)
+                        return BadRequest(new ApiResponse(400, "Phone number is already used by another account."));
+                    user.PhoneNumber = dto.PhoneNumber;
+                }
+
+                if (!string.IsNullOrWhiteSpace(dto.FullName))
+                    user.FullName = dto.FullName;
+
+                if (dto.Image != null)
+                    user.Image = dto.Image;
+
+                var result = await _userManager.UpdateAsync(user);
+                if (!result.Succeeded)
+                    return BadRequest(new ApiResponse(400, "Failed to update user profile."));
+
+                return Ok(new { message = "User profile updated successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating user profile: {ex.Message}"));
+            }
+        }
+
+        [HttpGet("EmergencyContact/{userId}")]
+        public async Task<ActionResult<EmergencyContactDto>> GetEmergencyContact(string userId)
+        {
+            try
+            {
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new ApiResponse(404, "User not found."));
+
+                var claims = await _userManager.GetClaimsAsync(user);
+                var emergencyName = claims.FirstOrDefault(c => c.Type == "emergency_contact_name")?.Value;
+                var emergencyPhone = claims.FirstOrDefault(c => c.Type == "emergency_contact_phone")?.Value;
+
+                return Ok(new EmergencyContactDto { Name = emergencyName, PhoneNumber = emergencyPhone });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while getting emergency contact: {ex.Message}"));
+            }
+        }
+
+        [HttpPut("EmergencyContact/{userId}")]
+        public async Task<IActionResult> UpsertEmergencyContact(string userId, [FromBody] EmergencyContactDto dto)
+        {
+            try
+            {
+                if (dto == null)
+                    return BadRequest(new ApiResponse(400, "Invalid payload"));
+
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return NotFound(new ApiResponse(404, "User not found."));
+
+                var claims = await _userManager.GetClaimsAsync(user);
+
+                await UpsertOrRemoveClaim(user, claims, "emergency_contact_name", dto.Name);
+                await UpsertOrRemoveClaim(user, claims, "emergency_contact_phone", dto.PhoneNumber);
+
+                return Ok(new { message = "Emergency contact saved successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while saving emergency contact: {ex.Message}"));
+            }
+        }
+
+        private async Task UpsertOrRemoveClaim(User user, IList<Claim> existingClaims, string claimType, string? value)
+        {
+            var current = existingClaims.FirstOrDefault(c => c.Type == claimType);
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                if (current != null)
+                    await _userManager.RemoveClaimAsync(user, current);
+                return;
+            }
+
+            if (current == null)
+            {
+                await _userManager.AddClaimAsync(user, new Claim(claimType, value));
+                return;
+            }
+
+            if (!string.Equals(current.Value, value, StringComparison.Ordinal))
+                await _userManager.ReplaceClaimAsync(user, current, new Claim(claimType, value));
+        }
     }
 }

@@ -69,6 +69,82 @@ namespace Snap.APIs.Services
             }
         }
 
+        public async Task NotifyScheduledOrderAcceptedAsync(int orderId, int driverId, OrderDto order)
+        {
+            var driverName = await _context.Drivers
+                .AsNoTracking()
+                .Where(d => d.Id == driverId)
+                .Select(d => d.DriverFullname)
+                .FirstOrDefaultAsync() ?? "A driver";
+
+            await _hub.BroadcastOrderStatusAsync(
+                new { orderId, status = "scheduled_accepted", driverId }, default);
+
+            var userToken = await GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
+            if (!string.IsNullOrEmpty(userToken))
+            {
+                await _fcm.SendNotification(
+                    userToken,
+                    "Scheduled Ride Accepted",
+                    $"{driverName} reserved your scheduled ride.",
+                    BuildPayload("scheduled_order_accepted", orderId, order, driverName));
+            }
+
+            var driverToken = await GetDriverFcmTokenAsync(driverId);
+            if (!string.IsNullOrEmpty(driverToken))
+            {
+                await _fcm.SendNotification(
+                    driverToken,
+                    "Scheduled Ride Reserved",
+                    $"You reserved a scheduled ride at {order.Date:HH:mm}.",
+                    BuildPayload("scheduled_order_reserved", orderId, order));
+            }
+        }
+
+        public async Task NotifyScheduledRideReminderAsync(int orderId, int driverId, DateTime scheduledDateUtc)
+        {
+            var driverToken = await GetDriverFcmTokenAsync(driverId);
+            if (string.IsNullOrEmpty(driverToken))
+                return;
+
+            await _fcm.SendNotification(
+                driverToken,
+                "Scheduled Ride Reminder",
+                $"Reminder: You have a scheduled ride at {scheduledDateUtc:HH:mm}.",
+                new Dictionary<string, string>
+                {
+                    { "type", "scheduled_reminder" },
+                    { "orderId", orderId.ToString() },
+                    { "scheduledAtUtc", scheduledDateUtc.ToString("O") }
+                });
+        }
+
+        public async Task NotifyScheduledRideStartingSoonAsync(int orderId, int driverId, OrderDto order)
+        {
+            await _hub.BroadcastOrderStatusAsync(
+                new { orderId, status = order.Status, driverid = order.Driverid }, default);
+
+            var userToken = await GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
+            if (!string.IsNullOrEmpty(userToken))
+            {
+                await _fcm.SendNotification(
+                    userToken,
+                    "Ride Starting Soon",
+                    "Your scheduled ride is starting soon.",
+                    BuildPayload("scheduled_starting_soon", orderId, order));
+            }
+
+            var driverToken = await GetDriverFcmTokenAsync(driverId);
+            if (!string.IsNullOrEmpty(driverToken))
+            {
+                await _fcm.SendNotification(
+                    driverToken,
+                    "Ride Starting Soon",
+                    "Your scheduled ride is starting soon. Please be ready.",
+                    BuildPayload("scheduled_starting_soon", orderId, order));
+            }
+        }
+
         // ── Order cancelled ───────────────────────────────────────────────────────
 
         public async Task NotifyOrderCancelledAsync(int orderId, OrderDto order)
@@ -153,6 +229,38 @@ namespace Snap.APIs.Services
             }
         }
 
+        public async Task NotifyDriversOfScheduledOrderAsync(
+            OrderDto order, IReadOnlyList<int>? targetDriverIds, CancellationToken ct)
+        {
+            try
+            {
+                if (targetDriverIds is { Count: 0 })
+                {
+                    _logger.LogWarning("Order {Id}: NearestOnly — no available drivers nearby, skipping", order.Id);
+                    return;
+                }
+
+                await _hub.BroadcastNewOrderAsync(order, targetDriverIds, ct);
+
+                var tokens = targetDriverIds is null
+                    ? await AllDriverTokensAsync(ct)
+                    : await TargetDriverTokensAsync(targetDriverIds, ct);
+
+                if (tokens.Count == 0) return;
+
+                await _fcm.SendBatchNotificationsAsync(
+                    tokens,
+                    "Scheduled Ride Available",
+                    $"Scheduled at {order.Date:HH:mm}. Open the app to accept.",
+                    BuildPayload("scheduled_order", order.Id, order),
+                    FcmBatchSize);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Scheduled driver notification failed for order {Id}", order.Id);
+            }
+        }
+
         // ── Token helpers ─────────────────────────────────────────────────────────
 
         private async Task<List<string>> AllDriverTokensAsync(CancellationToken ct) =>
@@ -213,7 +321,9 @@ namespace Snap.APIs.Services
                 { "destinationLng", o.ToLatLng.Lng.ToString()    },
                 { "price",          o.ExpectedPrice.ToString()   },
                 { "fromPlace",      o.From                       },
-                { "toPlace",        o.To                         }
+                { "toPlace",        o.To                         },
+                { "status",         o.Status      ?? ""          },
+                { "scheduledAtUtc", o.Date.ToUniversalTime().ToString("O") }
             };
 
             if (driverName != null)

@@ -42,6 +42,11 @@ namespace Snap.APIs.Services
             if (string.IsNullOrWhiteSpace(dto.Type))
                 throw new ArgumentException("Order type is required.");
 
+            var nowUtc = DateTime.UtcNow;
+            var settings = _options.Value;
+            var leadTime = TimeSpan.FromMinutes(Math.Max(0, settings.ScheduledDispatchLeadTimeMinutes));
+            var isScheduled = dto.Date > nowUtc.Add(leadTime);
+
             var userInfo = await _context.Users
                 .AsNoTracking()
                 .Where(u => u.Id == dto.UserId)
@@ -65,7 +70,7 @@ namespace Snap.APIs.Services
                 UserImage     = userInfo.Image,
                 UserName      = userInfo.FullName,
                 UserPhone     = userInfo.PhoneNumber,
-                Status        = OrderStatus.Pending.GetStringValue(),
+                Status        = isScheduled ? "scheduled" : OrderStatus.Pending.GetStringValue(),
                 PaymentWay    = dto.PaymentWay,
                 CarType       = dto.CarType,
                 PinkMode      = dto.PinkMode,
@@ -75,8 +80,8 @@ namespace Snap.APIs.Services
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
 
-            var settings  = _options.Value;
             var orderDto  = OrderMapper.ToDto(order);
+
             var targetIds = settings.NotificationMode == DriverNotificationMode.NearestOnly
                 ? GetNearestDriverIds(dto.FromLatLng.Lat, dto.FromLatLng.Lng, settings.NearestDriverCount)
                 : null;
@@ -87,7 +92,10 @@ namespace Snap.APIs.Services
             {
                 using var scope   = _scopeFactory.CreateScope();
                 var notifier = scope.ServiceProvider.GetRequiredService<IOrderNotificationService>();
-                await notifier.NotifyDriversOfNewOrderAsync(orderDto, targetIds, ct);
+                if (isScheduled)
+                    await notifier.NotifyDriversOfScheduledOrderAsync(orderDto, targetIds, ct);
+                else
+                    await notifier.NotifyDriversOfNewOrderAsync(orderDto, targetIds, ct);
             });
 
             return orderDto;
@@ -119,6 +127,53 @@ namespace Snap.APIs.Services
             await _notificationService.NotifyOrderAcceptedAsync(dto.OrderId, dto.Driverid, order);
         }
 
+        public async Task AcceptScheduledOrderAsync(UpdateOrderDriverDto dto)
+        {
+            var order = await _context.Orders
+                .AsNoTracking()
+                .Where(o => o.Id == dto.OrderId)
+                .Select(o => new { o.Id, o.Status, o.Date })
+                .FirstOrDefaultAsync()
+                ?? throw new KeyNotFoundException("Order not found");
+
+            if (!string.Equals(order.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Order is not available for scheduled acceptance.");
+
+            var settings = _options.Value;
+            var conflictWindow = Math.Max(0, settings.ScheduledConflictWindowMinutes);
+
+            var hasConflict = await _context.Orders
+                .AsNoTracking()
+                .Where(o =>
+                    o.Driverid == dto.Driverid &&
+                    (o.Status == "scheduled_accepted" || o.Status == OrderStatus.Approved.GetStringValue() || o.Status == OrderStatus.Arrived.GetStringValue() || o.Status == OrderStatus.Started.GetStringValue()) &&
+                    EF.Functions.DateDiffMinute(o.Date, order.Date) <= conflictWindow &&
+                    EF.Functions.DateDiffMinute(o.Date, order.Date) >= -conflictWindow)
+                .AnyAsync();
+
+            if (hasConflict)
+                throw new InvalidOperationException("Driver has another trip that conflicts with this scheduled time.");
+
+            var rows = await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE Orders SET Driverid = {0}, Status = {1} WHERE Id = {2} AND Status = {3}",
+                dto.Driverid,
+                "scheduled_accepted",
+                dto.OrderId,
+                "scheduled");
+
+            if (rows == 0)
+                throw new InvalidOperationException("Order is no longer available or already accepted.");
+
+            var fullOrder = await _context.Orders
+                .AsNoTracking()
+                .Where(o => o.Id == dto.OrderId)
+                .Select(OrderMapper.ToProjection)
+                .FirstOrDefaultAsync()
+                ?? throw new KeyNotFoundException("Order not found after accept.");
+
+            await _notificationService.NotifyScheduledOrderAcceptedAsync(dto.OrderId, dto.Driverid, fullOrder);
+        }
+
         // ── Driver cancels ────────────────────────────────────────────────────────
 
         public async Task CancelOrderByDriverAsync(UpdateOrderDriverDto dto)
@@ -142,6 +197,17 @@ namespace Snap.APIs.Services
 
             if (order.UserId != dto.UserId)
                 throw new UnauthorizedAccessException("You are not allowed to cancel this order.");
+
+            if (string.Equals(order.Status, "scheduled", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(order.Status, "scheduled_accepted", StringComparison.OrdinalIgnoreCase))
+            {
+                var settings = _options.Value;
+                var cutoffMinutes = Math.Max(0, settings.ScheduledCancelCutoffMinutes);
+                var cutoffTimeUtc = order.Date.AddMinutes(-cutoffMinutes);
+
+                if (DateTime.UtcNow > cutoffTimeUtc)
+                    throw new InvalidOperationException($"You can only cancel a scheduled trip before {cutoffMinutes} minutes of its start time.");
+            }
 
             var current = OrderStatusExtensions.FromString(order.Status ?? string.Empty);
 
@@ -184,6 +250,21 @@ namespace Snap.APIs.Services
                 .Where(o => o.Status != OrderStatus.Cancel.GetStringValue())
                 .Select(OrderMapper.ToProjection)
                 .ToListAsync();
+
+        public async Task<List<OrderDto>> GetScheduledOrdersByUserAsync(string userId)
+        {
+            var nowUtc = DateTime.UtcNow;
+            return await _context.Orders
+                .AsNoTracking()
+                .Where(o =>
+                    o.UserId == userId &&
+                    (o.Status == "scheduled" ||
+                     o.Status == "scheduled_accepted" ||
+                     (o.Status == "pending" && o.Date >= nowUtc)))
+                .OrderBy(o => o.Date)
+                .Select(OrderMapper.ToProjection)
+                .ToListAsync();
+        }
 
         public async Task<OrderDto> GetOrderByIdAsync(int id) =>
             await _context.Orders

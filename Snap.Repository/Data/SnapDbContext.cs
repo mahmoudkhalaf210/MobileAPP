@@ -37,5 +37,10 @@ namespace Snap.Repository.Data
 
         public DbSet<AppVersion> AppVersions { get; set; }
         public DbSet<SavedAddress> SavedAddresses { get; set; }
+
+        // v2 additions
+        public DbSet<ExplorePlace> ExplorePlaces { get; set; }
+        public DbSet<UserPoints> UserPoints { get; set; }
+        public DbSet<UserPointsTransaction> UserPointsTransactions { get; set; }
     }
 }

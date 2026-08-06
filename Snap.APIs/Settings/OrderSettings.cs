@@ -31,5 +31,12 @@ namespace Snap.APIs.Settings
         /// <see cref="DriverNotificationMode.NearestOnly"/>. Ignored for AllDrivers.
         /// </summary>
         public int NearestDriverCount { get; set; } = 10;
+
+        public int ScheduledDispatchLeadTimeMinutes { get; set; } = 10;
+        public int ScheduledCancelCutoffMinutes { get; set; } = 15;
+
+        public int ScheduledReminderMinutes { get; set; } = 60;
+        public int ScheduledStartingSoonMinutes { get; set; } = 10;
+        public int ScheduledConflictWindowMinutes { get; set; } = 60;
     }
 }

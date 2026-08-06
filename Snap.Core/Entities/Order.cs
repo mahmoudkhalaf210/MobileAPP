@@ -53,5 +53,9 @@ namespace Snap.Core.Entities
         public string CarType { get; set; }
         public bool PinkMode { get; set; }
         public string? FCMToken { get; set; }
+
+        // v2 addition — additive, nullable. Legacy string CarType above is untouched
+        // and remains the source of truth for all existing (v1) code paths.
+        public CarType? CarTypeEnum { get; set; }
     }
 }

@@ -59,8 +59,14 @@ namespace Snap.APIs
 
             // ── Notification (scoped — uses DbContext + FCM per request/job) ───────
             builder.Services.AddScoped<INotificationService, NotificationService>();
+
+            // Concrete OrderNotificationService is registered under its own type so the
+            // v2 decorator below can compose over it; IOrderNotificationService itself
+            // now resolves to the decorator for every existing caller (OrderService,
+            // ScheduledRideProcessorService) with zero changes to those files.
+            builder.Services.AddScoped<Snap.APIs.Services.OrderNotificationService>();
             builder.Services.AddScoped<Snap.APIs.Services.IOrderNotificationService,
-                                       Snap.APIs.Services.OrderNotificationService>();
+                                       Snap.APIs.Services.V2.OrderNotificationServiceV2Decorator>();
 
             // ── Order business logic (scoped) ─────────────────────────────────────
             builder.Services.Configure<Snap.APIs.Settings.OrderSettings>(
@@ -68,10 +74,38 @@ namespace Snap.APIs
             builder.Services.AddScoped<Snap.APIs.Services.IOrderService,
                                        Snap.APIs.Services.OrderService>();
 
+            // ── v2: SignalR real-time surface ───────────────────────────────────────
+            builder.Services.AddSignalR();
+
+            // ── v2: Data Access Layer (repository pattern over the existing SnapDbContext) ──
+            builder.Services.AddScoped(typeof(Snap.DataAccess.Interfaces.IRepository<>),
+                                       typeof(Snap.DataAccess.Repositories.Repository<>));
+            builder.Services.AddScoped<Snap.DataAccess.Interfaces.IUnitOfWork,
+                                       Snap.DataAccess.UnitOfWork.UnitOfWork>();
+            builder.Services.AddScoped<Snap.DataAccess.Interfaces.IOrderRepositoryV2,
+                                       Snap.DataAccess.Repositories.OrderRepositoryV2>();
+            builder.Services.AddScoped<Snap.DataAccess.Interfaces.IUserPointsRepository,
+                                       Snap.DataAccess.Repositories.UserPointsRepository>();
+
+            // ── v2: Business Layer ──────────────────────────────────────────────────
+            builder.Services.Configure<Snap.Business.Settings.PointsSettings>(
+                builder.Configuration.GetSection(Snap.Business.Settings.PointsSettings.SectionName));
+            builder.Services.AddScoped<Snap.Business.Interfaces.IOrderV2QueryService,
+                                       Snap.Business.Services.OrderV2QueryService>();
+            builder.Services.AddScoped<Snap.Business.Interfaces.IExplorePlaceService,
+                                       Snap.Business.Services.ExplorePlaceService>();
+            builder.Services.AddScoped<Snap.Business.Interfaces.IPointsService,
+                                       Snap.Business.Services.PointsService>();
+
+            // Composition adapter (lives in Snap.APIs — see OrderV2CommandService for why).
+            builder.Services.AddScoped<Snap.Business.Interfaces.IOrderV2CommandService,
+                                       Snap.APIs.Services.V2.OrderV2CommandService>();
+
             // ── Background job infrastructure (singletons) ────────────────────────
             builder.Services.AddSingleton<Snap.APIs.Services.IBackgroundJobQueue,
                                           Snap.APIs.Services.BackgroundJobQueue>();
             builder.Services.AddHostedService<Snap.APIs.Services.BackgroundJobProcessor>();
+            builder.Services.AddHostedService<Snap.APIs.Services.ScheduledRideProcessorService>();
 
             // ── Startup seeders ───────────────────────────────────────────────────
             builder.Services.AddHostedService<Snap.APIs.Services.DriverAvailabilityInitializer>();
@@ -250,8 +284,11 @@ namespace Snap.APIs
 
             // WebSocket Middleware must be after UseWebSockets and before MapControllers
             app.UseMiddleware<WebSocketMiddleware>();
-            
+
             app.MapControllers();
+
+            // v2 real-time surface — additive, does not replace the WebSocket layer above.
+            app.MapHub<Snap.APIs.Hubs.OrdersHubV2>("/hubs/v2/orders").RequireCors("SignalRPolicy");
 
             app.Run();
         }

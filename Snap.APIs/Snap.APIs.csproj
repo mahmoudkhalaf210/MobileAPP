@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +27,13 @@
   <ItemGroup>
     <ProjectReference Include="..\Snap.Repository\Snap.Repository.csproj" />
     <ProjectReference Include="..\Snap.Service\Snap.Service.csproj" />
+    <ProjectReference Include="..\Snap.Business\Snap.Business.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="artifacts\**\*.cs" />
+    <None Remove="artifacts\**" />
+    <Content Remove="artifacts\**" />
   </ItemGroup>
 
 </Project>

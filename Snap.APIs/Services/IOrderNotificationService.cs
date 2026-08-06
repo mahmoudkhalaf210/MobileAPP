@@ -6,6 +6,9 @@ namespace Snap.APIs.Services
     public interface IOrderNotificationService
     {
         Task NotifyOrderAcceptedAsync(int orderId, int driverId, OrderDto order);
+        Task NotifyScheduledOrderAcceptedAsync(int orderId, int driverId, OrderDto order);
+        Task NotifyScheduledRideReminderAsync(int orderId, int driverId, DateTime scheduledDateUtc);
+        Task NotifyScheduledRideStartingSoonAsync(int orderId, int driverId, OrderDto order);
         Task NotifyOrderCancelledAsync(int orderId, OrderDto order);
         Task NotifyWorkflowTransitionAsync(int orderId, OrderDto order, OrderStatus targetStatus);
 
@@ -16,5 +19,6 @@ namespace Snap.APIs.Services
         /// <paramref name="targetDriverIds"/> = list → notify only those driver IDs.
         /// </summary>
         Task NotifyDriversOfNewOrderAsync(OrderDto order, IReadOnlyList<int>? targetDriverIds, CancellationToken ct);
+        Task NotifyDriversOfScheduledOrderAsync(OrderDto order, IReadOnlyList<int>? targetDriverIds, CancellationToken ct);
     }
 }
