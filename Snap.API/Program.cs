@@ -173,6 +173,10 @@ namespace Snap.API
                 logger.LogInformation("Seeding default users...");
                 await UserSeed.SeedUserAsync(userManager, roleManager);
                 logger.LogInformation("User seeding completed.");
+
+                logger.LogInformation("Seeding default cancel reasons...");
+                await CancelReasonSeed.SeedAsync(dbContext);
+                logger.LogInformation("Cancel reason seeding completed.");
             }
             catch (Exception e)
             {
