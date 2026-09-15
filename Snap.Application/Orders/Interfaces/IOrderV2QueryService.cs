@@ -10,5 +10,8 @@ namespace Snap.Application.Orders.Interfaces
         Task<List<OrderV2Dto>> GetActiveForUserAsync(string userId);
         Task<List<OrderV2Dto>> GetCompletedForUserAsync(string userId);
         Task<List<OrderV2Dto>> GetCancelledForUserAsync(string userId);
+        Task<List<OrderV2Dto>> GetAllScheduledOrdersAsync();
+        Task<OrderV2Dto?> GetScheduledByIdAsync(int id);
+        Task<List<OrderV2Dto>> GetScheduledForDriverAsync(int driverId);
     }
 }

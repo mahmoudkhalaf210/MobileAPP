@@ -65,5 +65,21 @@ namespace Snap.Infrastructure.Repositories
                 .Where(o => o.UserId == userId && o.Status == OrderStatus.Cancel.GetStringValue())
                 .OrderByDescending(o => o.Date)
                 .ToListAsync();
+
+        public Task<List<Order>> GetAllScheduledOrdersAsync() =>
+            _context.Orders.AsNoTracking()
+                .Where(o => o.Status == "scheduled" || o.Status == "scheduled_accepted")
+                .OrderBy(o => o.Date)
+                .ToListAsync();
+
+        public Task<Order?> GetScheduledByIdAsync(int id) =>
+            _context.Orders.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == id && (o.Status == "scheduled" || o.Status == "scheduled_accepted"));
+
+        public Task<List<Order>> GetScheduledForDriverAsync(int driverId) =>
+            _context.Orders.AsNoTracking()
+                .Where(o => o.Driverid == driverId && (o.Status == "scheduled" || o.Status == "scheduled_accepted"))
+                .OrderBy(o => o.Date)
+                .ToListAsync();
     }
 }

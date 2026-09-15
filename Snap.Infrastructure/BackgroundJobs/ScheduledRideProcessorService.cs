@@ -2,8 +2,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Snap.Application.Common.Interfaces.Repositories;
+using Snap.Application.Domain.Enums;
 using Snap.Application.Drivers.Interfaces;
 using Snap.Application.Orders.Interfaces;
+using Snap.Application.Orders.Mapping;
 using Snap.Application.Orders.Settings;
 using System.Collections.Concurrent;
 using System.Globalization;
@@ -82,7 +85,10 @@ namespace Snap.Infrastructure.BackgroundJobs
 
             foreach (var o in dueForStartingSoon)
             {
-                var rows = await workflowRepo.TryTransitionStatusAsync(o.Id, "pending", "scheduled_accepted");
+                // Promote straight to "approve" (not "pending") — the driver is already
+                // confirmed, so this must not fall back into the unclaimed-pending pool
+                // where another driver's accept could steal the ride out from under them.
+                var rows = await workflowRepo.TryTransitionStatusAsync(o.Id, OrderStatus.Approved.GetStringValue(), "scheduled_accepted");
 
                 if (rows == 0)
                     continue;
@@ -97,15 +103,31 @@ namespace Snap.Infrastructure.BackgroundJobs
                 await notifier.NotifyScheduledRideStartingSoonAsync(o.Id, o.DriverId, orderDto);
             }
 
+            // Scheduled orders no driver ever accepted, whose ride time has arrived (or is
+            // about to) — auto-cancel instead of leaving them stuck as "scheduled" forever.
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var unclaimedScheduled = await orderRepo.GetUnclaimedScheduledDueTrackedAsync(startingSoonThreshold, ct);
+
+            foreach (var order in unclaimedScheduled)
+            {
+                order.Status = OrderStatus.Cancel.GetStringValue();
+                await notifier.NotifyOrderCancelledAsync(order.Id, OrderMapper.ToDto(order));
+            }
+
+            if (unclaimedScheduled.Count > 0)
+                await unitOfWork.SaveChangesAsync(ct);
+
             var remindedCount = dueForReminder.Count;
             var startingSoonCount = dueForStartingSoon.Count;
+            var unclaimedCancelledCount = unclaimedScheduled.Count;
 
-            if (remindedCount > 0 || startingSoonCount > 0)
+            if (remindedCount > 0 || startingSoonCount > 0 || unclaimedCancelledCount > 0)
             {
                 _logger.LogInformation(
-                    "ScheduledRideProcessorService cycle: reminders={Reminders}, startingSoon={StartingSoon}, nowUtc={Now}",
+                    "ScheduledRideProcessorService cycle: reminders={Reminders}, startingSoon={StartingSoon}, unclaimedCancelled={UnclaimedCancelled}, nowUtc={Now}",
                     remindedCount,
                     startingSoonCount,
+                    unclaimedCancelledCount,
                     nowUtc.ToString("O", CultureInfo.InvariantCulture));
             }
         }

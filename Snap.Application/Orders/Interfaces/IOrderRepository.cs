@@ -29,5 +29,8 @@ namespace Snap.Application.Orders.Interfaces
 
         Task<List<Order>> GetExpiredPendingTrackedAsync(DateTime cutoffUtc, CancellationToken ct);
         Task<int> DeleteExpiredPendingOrdersRawAsync(CancellationToken ct);
+
+        // Scheduled orders no driver ever accepted, whose ride time is at/past cutoffUtc.
+        Task<List<Order>> GetUnclaimedScheduledDueTrackedAsync(DateTime cutoffUtc, CancellationToken ct);
     }
 }

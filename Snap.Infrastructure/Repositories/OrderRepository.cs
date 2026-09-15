@@ -144,5 +144,10 @@ namespace Snap.Infrastructure.Repositories
 
             return _context.Database.ExecuteSqlRawAsync(sqlQuery, ct);
         }
+
+        public Task<List<Order>> GetUnclaimedScheduledDueTrackedAsync(DateTime cutoffUtc, CancellationToken ct) =>
+            _context.Orders
+                .Where(o => o.Status == "scheduled" && o.Date <= cutoffUtc)
+                .ToListAsync(ct);
     }
 }

@@ -133,6 +133,14 @@ namespace Snap.API.Controllers
             }
         }
 
+        // GET: api/orders/driver/{driverId}/has-active-order
+        [HttpGet("driver/{driverId}/has-active-order")]
+        public async Task<ActionResult<bool>> DriverHasActiveOrder(int driverId)
+        {
+            var hasActiveOrder = await _orderService.DriverHasActiveOrderAsync(driverId);
+            return Ok(new { hasActiveOrder });
+        }
+
         // GET: api/orders/{id}
         [HttpGet("{id}")]
         public async Task<ActionResult<OrderDto>> GetOrderById(int id)

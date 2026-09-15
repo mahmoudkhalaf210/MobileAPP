@@ -115,6 +115,9 @@ namespace Snap.Application.Orders.Services
 
         public async Task AcceptOrderAsync(UpdateOrderDriverDto dto)
         {
+            if (await _workflowRepo.HasActiveOrderAsync(dto.Driverid))
+                throw new InvalidOperationException("Driver already has an active order in progress.");
+
             var rows = await _workflowRepo.TryAssignDriverAsync(
                 dto.OrderId,
                 dto.Driverid,
@@ -170,6 +173,14 @@ namespace Snap.Application.Orders.Services
             var order = await _orderRepo.FindTrackedAsync(dto.OrderId)
                 ?? throw new KeyNotFoundException("Order not found");
 
+            var current = OrderStatusExtensions.FromString(order.Status ?? string.Empty);
+
+            if (current == OrderStatus.Complete)
+                throw new InvalidOperationException("You cannot cancel a completed order.");
+
+            if (current == OrderStatus.Cancel)
+                return;
+
             order.Status = OrderStatus.Cancel.GetStringValue();
             await _unitOfWork.SaveChangesAsync();
 
@@ -187,16 +198,8 @@ namespace Snap.Application.Orders.Services
             if (order.UserId != dto.UserId)
                 throw new UnauthorizedAccessException("You are not allowed to cancel this order.");
 
-            if (string.Equals(order.Status, "scheduled", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(order.Status, "scheduled_accepted", StringComparison.OrdinalIgnoreCase))
-            {
-                var settings = _options.Value;
-                var cutoffMinutes = Math.Max(0, settings.ScheduledCancelCutoffMinutes);
-                var cutoffTimeUtc = order.Date.AddMinutes(-cutoffMinutes);
-
-                if (DateTime.UtcNow > cutoffTimeUtc)
-                    throw new InvalidOperationException($"You can only cancel a scheduled trip before {cutoffMinutes} minutes of its start time.");
-            }
+            // Scheduled orders can now be cancelled at any time before completion —
+            // the previous 15-minutes-before-pickup cutoff has been removed.
 
             var current = OrderStatusExtensions.FromString(order.Status ?? string.Empty);
 
@@ -255,6 +258,9 @@ namespace Snap.Application.Orders.Services
             _orderRepo.Remove(order);
             await _unitOfWork.SaveChangesAsync();
         }
+
+        public Task<bool> DriverHasActiveOrderAsync(int driverId) =>
+            _workflowRepo.HasActiveOrderAsync(driverId);
 
         // ── Nearest-driver selection ──────────────────────────────────────────────
         //

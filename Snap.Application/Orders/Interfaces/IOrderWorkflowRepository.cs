@@ -15,5 +15,8 @@ namespace Snap.Application.Orders.Interfaces
 
         // Mirrors the EF.Functions.DateDiffMinute conflict-window check from AcceptScheduledOrderAsync.
         Task<bool> HasSchedulingConflictAsync(int driverId, DateTime referenceDate, int conflictWindowMinutes);
+
+        // True if the driver already has a live, in-progress order (approve/Arrived/Started).
+        Task<bool> HasActiveOrderAsync(int driverId);
     }
 }

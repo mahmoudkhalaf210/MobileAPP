@@ -33,5 +33,17 @@ namespace Snap.Application.Orders.Services
 
         public async Task<List<OrderV2Dto>> GetCancelledForUserAsync(string userId) =>
             (await _repo.GetCancelledForUserAsync(userId)).Select(OrderV2Mapper.ToDto).ToList();
+
+        public async Task<List<OrderV2Dto>> GetAllScheduledOrdersAsync() =>
+            (await _repo.GetAllScheduledOrdersAsync()).Select(OrderV2Mapper.ToDto).ToList();
+
+        public async Task<OrderV2Dto?> GetScheduledByIdAsync(int id)
+        {
+            var order = await _repo.GetScheduledByIdAsync(id);
+            return order is null ? null : OrderV2Mapper.ToDto(order);
+        }
+
+        public async Task<List<OrderV2Dto>> GetScheduledForDriverAsync(int driverId) =>
+            (await _repo.GetScheduledForDriverAsync(driverId)).Select(OrderV2Mapper.ToDto).ToList();
     }
 }

@@ -33,5 +33,14 @@ namespace Snap.Infrastructure.Repositories
                     EF.Functions.DateDiffMinute(o.Date, referenceDate) <= conflictWindowMinutes &&
                     EF.Functions.DateDiffMinute(o.Date, referenceDate) >= -conflictWindowMinutes)
                 .AnyAsync();
+
+        public Task<bool> HasActiveOrderAsync(int driverId) =>
+            _context.Orders
+                .AsNoTracking()
+                .AnyAsync(o =>
+                    o.Driverid == driverId &&
+                    (o.Status == OrderStatus.Approved.GetStringValue() ||
+                     o.Status == OrderStatus.Arrived.GetStringValue() ||
+                     o.Status == OrderStatus.Started.GetStringValue()));
     }
 }

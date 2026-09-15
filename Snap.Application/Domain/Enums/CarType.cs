@@ -11,6 +11,7 @@ namespace Snap.Application.Domain.Enums
         Car = 0,
         Scooter = 1,
         SuperMalaky = 2,
-        Taxi = 3
+        Taxi = 3,
+        Lada = 4
     }
 }
