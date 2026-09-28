@@ -17,6 +17,8 @@ namespace Snap.Infrastructure.Persistence
             // Configure LatLng as owned type for Order
             modelBuilder.Entity<Order>().OwnsOne(o => o.FromLatLng);
             modelBuilder.Entity<Order>().OwnsOne(o => o.ToLatLng);
+            // Soft-deleted orders are hidden from all LINQ queries; use IgnoreQueryFilters() to see them.
+            modelBuilder.Entity<Order>().HasQueryFilter(o => !o.IsDeleted);
             base.OnModelCreating(modelBuilder);
         }
 
@@ -37,6 +39,8 @@ namespace Snap.Infrastructure.Persistence
         public DbSet<ExplorePlace> ExplorePlaces { get; set; }
         public DbSet<UserPoints> UserPoints { get; set; }
         public DbSet<UserPointsTransaction> UserPointsTransactions { get; set; }
+        public DbSet<DriverPoints> DriverPoints { get; set; }
+        public DbSet<DriverPointsTransaction> DriverPointsTransactions { get; set; }
         public DbSet<CancelReason> CancelReasons { get; set; }
     }
 }

@@ -6,6 +6,7 @@ namespace Snap.Application.CarDatas.DTOs
         public string CarPhoto { get; set; }
         public string LicenseFront { get; set; }
         public string LicenseBack { get; set; }
+        // Holds the car type (e.g. "Lada"/"Taxi"/"SuperMalaky"), not a real brand name.
         public string CarBrand { get; set; }
         public string CarModel { get; set; }
         public string CarColor { get; set; }

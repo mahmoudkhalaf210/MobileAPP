@@ -1,15 +1,26 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Snap.Application.Common.Interfaces.Notifications;
-using Snap.Application.Common.Interfaces.Repositories;
 using Snap.Application.Domain.Enums;
 using Snap.Application.Orders.Interfaces;
+using Snap.Application.Orders.Mapping;
 
 namespace Snap.Infrastructure.BackgroundJobs
 {
+    /// <summary>
+    /// Runs every minute:
+    ///   1. Pending orders no driver accepted within <see cref="PendingExpirationMinutes"/>
+    ///      are cancelled (atomically, so a driver accepting at the same moment wins)
+    ///      and the user + drivers are notified.
+    ///   2. Every cancelled order — expired, user/driver cancelled, or unclaimed
+    ///      scheduled — is soft-deleted (hidden from the apps, kept in the DB).
+    /// All comparisons are in UTC, matching how Order.Date is stored.
+    /// </summary>
     public class OrderCancellationService : BackgroundService
     {
+        private const int PendingExpirationMinutes = 10;
+        private static readonly TimeSpan CheckInterval = TimeSpan.FromMinutes(1);
+
         private readonly ILogger<OrderCancellationService> _logger;
         private readonly IServiceProvider _serviceProvider;
 
@@ -29,65 +40,70 @@ namespace Snap.Infrastructure.BackgroundJobs
             {
                 try
                 {
-                    await CancelExpiredOrders(stoppingToken);
+                    await CancelExpiredPendingOrdersAsync(stoppingToken);
+                    await SoftDeleteCancelledOrdersAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error occurred while canceling expired orders.");
+                    _logger.LogError(ex, "Error occurred while cleaning up expired/cancelled orders.");
                 }
 
-                // Check every minute
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+                await Task.Delay(CheckInterval, stoppingToken);
             }
 
             _logger.LogInformation("OrderCancellationService is stopping.");
         }
 
-        private async Task CancelExpiredOrders(CancellationToken stoppingToken)
+        private async Task CancelExpiredPendingOrdersAsync(CancellationToken ct)
         {
             using var scope = _serviceProvider.CreateScope();
             var orderRepo = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-            var notifRepo = scope.ServiceProvider.GetRequiredService<IOrderNotificationRepository>();
-            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            var workflowRepo = scope.ServiceProvider.GetRequiredService<IOrderWorkflowRepository>();
+            var notifier = scope.ServiceProvider.GetRequiredService<IOrderNotificationService>();
 
-            var fourMinutesAgo = DateTime.UtcNow.AddMinutes(-4);
+            var cutoffUtc = DateTime.UtcNow.AddMinutes(-PendingExpirationMinutes);
+            var expiredOrders = await orderRepo.GetExpiredPendingTrackedAsync(cutoffUtc, ct);
 
-            // Find all pending orders older than 4 minutes
-            var expiredOrders = await orderRepo.GetExpiredPendingTrackedAsync(fourMinutesAgo, stoppingToken);
+            var cancelledStatus = OrderStatus.Cancel.GetStringValue();
+            var pendingStatus = OrderStatus.Pending.GetStringValue();
 
-            if (expiredOrders.Any())
+            foreach (var order in expiredOrders)
             {
-                _logger.LogInformation($"Found {expiredOrders.Count} expired pending orders to cancel.");
+                // Conditional update: skipped if a driver accepted it since we read it.
+                var rows = await workflowRepo.TryTransitionStatusAsync(order.Id, cancelledStatus, pendingStatus);
+                if (rows == 0)
+                    continue;
 
-                foreach (var order in expiredOrders)
+                order.Status = cancelledStatus;
+                _logger.LogInformation("Order {OrderId} auto-cancelled: no driver accepted within {Minutes} minutes.",
+                    order.Id, PendingExpirationMinutes);
+
+                try
                 {
-                    order.Status = OrderStatus.Cancel.GetStringValue();
-                    _logger.LogInformation($"Order {order.Id} has been automatically cancelled due to timeout.");
-
-                    // Notify User
-                    try
-                    {
-                        // Get user token if not in order
-                        string? token = order.FCMToken;
-                        if (string.IsNullOrEmpty(token))
-                        {
-                            token = await notifRepo.GetUserFcmTokenAsync(order.UserId);
-                        }
-
-                        if (!string.IsNullOrEmpty(token))
-                        {
-                            await notificationService.SendNotification(token, "Order Cancelled", "We could not find a driver for your order at this time.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"Failed to notify user for order {order.Id}");
-                    }
+                    await notifier.NotifyOrderCancelledAsync(
+                        order.Id,
+                        OrderMapper.ToDto(order),
+                        "لم نتمكن من إيجاد كابتن لطلبك حالياً، برجاء المحاولة مرة أخرى.");
                 }
-
-                await unitOfWork.SaveChangesAsync(stoppingToken);
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to notify about auto-cancelled order {OrderId}", order.Id);
+                }
             }
+        }
+
+        private async Task SoftDeleteCancelledOrdersAsync(CancellationToken ct)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var orderRepo = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
+
+            var deleted = await orderRepo.SoftDeleteCancelledOrdersAsync(ct);
+            if (deleted > 0)
+                _logger.LogInformation("Soft-deleted {Count} cancelled order(s).", deleted);
         }
     }
 }

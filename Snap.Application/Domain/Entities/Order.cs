@@ -58,5 +58,11 @@ namespace Snap.Application.Domain.Entities
         // reason they selected (Orders/DTOs/CancelReasonDto). Null for driver
         // cancellations or orders never cancelled.
         public int? CancelReasonId { get; set; }
+
+        // Soft delete: cancelled orders are flagged instead of removed, so they vanish
+        // from every app-facing query (global query filter in SnapDbContext) but stay
+        // in the database for the admin (cancel reasons, reporting).
+        public bool IsDeleted { get; set; }
+        public DateTime? DeletedAtUtc { get; set; }
     }
 }

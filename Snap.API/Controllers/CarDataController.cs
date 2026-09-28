@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Snap.API.Errors;
 using Snap.Application.CarDatas.DTOs;
 using Snap.Application.CarDatas.Interfaces;
+using Snap.Application.Domain.Enums;
 
 namespace Snap.API.Controllers
 {
@@ -44,5 +45,29 @@ namespace Snap.API.Controllers
                 return StatusCode(500, new ApiResponse(500, $"An error occurred while getting car data: {ex.Message}"));
             }
         }
+
+        // PUT: api/CarData/by-driver/{driverId}/car-type
+        [HttpPut("by-driver/{driverId}/car-type")]
+        public async Task<ActionResult<CarDataDto>> UpdateCarType(int driverId, [FromBody] UpdateCarTypeDto dto)
+        {
+            try
+            {
+                var result = await _service.UpdateCarTypeAsync(driverId, dto.CarType);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ApiResponse(404, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse(500, $"An error occurred while updating car type: {ex.Message}"));
+            }
+        }
+    }
+
+    public class UpdateCarTypeDto
+    {
+        public CarType CarType { get; set; }
     }
 }

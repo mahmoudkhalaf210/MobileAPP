@@ -33,6 +33,7 @@ namespace Snap.Application.DependencyInjection
         {
             services.Configure<OrderSettings>(configuration.GetSection(OrderSettings.SectionName));
             services.Configure<PointsSettings>(configuration.GetSection(PointsSettings.SectionName));
+            services.Configure<DriverPointsSettings>(configuration.GetSection(DriverPointsSettings.SectionName));
 
             // ── Location / driver state (singleton — shared across all requests) ────
             services.AddSingleton<IDriverLocationService, DriverLocationService>();
@@ -57,6 +58,7 @@ namespace Snap.Application.DependencyInjection
             services.AddScoped<IOrderV2CommandService, OrderV2CommandService>();
             services.AddScoped<IExplorePlaceService, ExplorePlaceService>();
             services.AddScoped<IPointsService, PointsService>();
+            services.AddScoped<IDriverPointsService, DriverPointsService>();
             services.AddScoped<ICancelReasonService, CancelReasonService>();
 
             // ── Previously-service-less V1 controllers (extracted per architecture rule) ──

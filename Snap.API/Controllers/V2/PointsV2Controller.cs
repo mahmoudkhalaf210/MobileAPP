@@ -11,10 +11,12 @@ namespace Snap.API.Controllers.V2
     public class PointsV2Controller : ControllerBase
     {
         private readonly IPointsService _service;
+        private readonly IDriverPointsService _driverService;
 
-        public PointsV2Controller(IPointsService service)
+        public PointsV2Controller(IPointsService service, IDriverPointsService driverService)
         {
             _service = service;
+            _driverService = driverService;
         }
 
         // GET: api/v2/points/{userId}
@@ -23,6 +25,14 @@ namespace Snap.API.Controllers.V2
         {
             var balance = await _service.GetBalanceAsync(userId);
             return Ok(new UserPointsBalanceDto { UserId = userId, Balance = balance });
+        }
+
+        // GET: api/v2/points/driver/{driverId}
+        [HttpGet("driver/{driverId:int}")]
+        public async Task<ActionResult<DriverPointsBalanceDto>> GetDriverBalance(int driverId)
+        {
+            var balance = await _driverService.GetBalanceAsync(driverId);
+            return Ok(new DriverPointsBalanceDto { DriverId = driverId, Balance = balance });
         }
     }
 }

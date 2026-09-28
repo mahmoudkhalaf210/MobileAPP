@@ -42,5 +42,24 @@ namespace Snap.Infrastructure.Repositories
                     (o.Status == OrderStatus.Approved.GetStringValue() ||
                      o.Status == OrderStatus.Arrived.GetStringValue() ||
                      o.Status == OrderStatus.Started.GetStringValue()));
+
+        public Task<bool> IsDriverFemaleAsync(int driverId) =>
+            _context.Drivers
+                .AsNoTracking()
+                .Where(d => d.Id == driverId)
+                .Join(_context.Users, d => d.UserId, u => u.Id, (_, u) => u.Gender)
+                .AnyAsync(gender => gender != null && gender.ToLower() == "female");
+
+        public Task<bool> DriverMatchesCarTypeAsync(int driverId, string? orderCarType)
+        {
+            if (!Enum.TryParse<CarType>(orderCarType, ignoreCase: true, out var carType))
+                return Task.FromResult(true);
+
+            return _context.Drivers
+                .AsNoTracking()
+                .Where(d => d.Id == driverId)
+                .WhereEligible(_context, carType, pinkMode: false)
+                .AnyAsync();
+        }
     }
 }

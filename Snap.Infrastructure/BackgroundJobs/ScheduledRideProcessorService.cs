@@ -78,7 +78,11 @@ namespace Snap.Infrastructure.BackgroundJobs
                 if (!_reminded.TryAdd(o.Id, 0))
                     continue;
 
-                await notifier.NotifyScheduledRideReminderAsync(o.Id, o.DriverId, o.Date.ToUniversalTime());
+                var orderDto = await orderRepo.GetByIdProjectedAsync(o.Id, ct);
+                if (orderDto == null)
+                    continue;
+
+                await notifier.NotifyScheduledRideReminderAsync(o.Id, o.DriverId, orderDto);
             }
 
             var dueForStartingSoon = await orderRepo.GetDueForStartingSoonAsync(startingSoonThreshold, ct);
@@ -111,7 +115,7 @@ namespace Snap.Infrastructure.BackgroundJobs
             foreach (var order in unclaimedScheduled)
             {
                 order.Status = OrderStatus.Cancel.GetStringValue();
-                await notifier.NotifyOrderCancelledAsync(order.Id, OrderMapper.ToDto(order));
+                await notifier.NotifyOrderCancelledAsync(order.Id, OrderMapper.ToDto(order), "لم نتمكن من إيجاد كابتن لرحلتك المجدولة.");
             }
 
             if (unclaimedScheduled.Count > 0)

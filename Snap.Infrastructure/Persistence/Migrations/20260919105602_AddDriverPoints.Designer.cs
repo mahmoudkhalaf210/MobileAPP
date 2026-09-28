@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Snap.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using Snap.Infrastructure.Persistence;
 namespace Snap.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SnapDbContext))]
-    partial class SnapDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260919105602_AddDriverPoints")]
+    partial class AddDriverPoints
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -491,9 +494,6 @@ namespace Snap.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("Date")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("DeletedAtUtc")
-                        .HasColumnType("datetime2");
-
                     b.Property<double>("Distance")
                         .HasColumnType("float");
 
@@ -509,9 +509,6 @@ namespace Snap.Infrastructure.Persistence.Migrations
                     b.Property<string>("From")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
 
                     b.Property<int>("NoPassengers")
                         .HasColumnType("int");

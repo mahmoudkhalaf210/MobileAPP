@@ -32,17 +32,20 @@ namespace Snap.Application.Orders.Services
         private readonly OrderNotificationService _inner;
         private readonly IOrderRealtimeNotifier _realtime;
         private readonly IPointsService _pointsService;
+        private readonly IDriverPointsService _driverPointsService;
         private readonly ILogger<OrderNotificationServiceV2Decorator> _logger;
 
         public OrderNotificationServiceV2Decorator(
             OrderNotificationService inner,
             IOrderRealtimeNotifier realtime,
             IPointsService pointsService,
+            IDriverPointsService driverPointsService,
             ILogger<OrderNotificationServiceV2Decorator> logger)
         {
             _inner = inner;
             _realtime = realtime;
             _pointsService = pointsService;
+            _driverPointsService = driverPointsService;
             _logger = logger;
         }
 
@@ -67,10 +70,10 @@ namespace Snap.Application.Orders.Services
             });
         }
 
-        public async Task NotifyScheduledRideReminderAsync(int orderId, int driverId, DateTime scheduledDateUtc)
+        public async Task NotifyScheduledRideReminderAsync(int orderId, int driverId, OrderDto order)
         {
             // Informational reminder only — no order-list membership changes, nothing to push.
-            await _inner.NotifyScheduledRideReminderAsync(orderId, driverId, scheduledDateUtc);
+            await _inner.NotifyScheduledRideReminderAsync(orderId, driverId, order);
         }
 
         public async Task NotifyScheduledRideStartingSoonAsync(int orderId, int driverId, OrderDto order)
@@ -84,9 +87,9 @@ namespace Snap.Application.Orders.Services
             });
         }
 
-        public async Task NotifyOrderCancelledAsync(int orderId, OrderDto order)
+        public async Task NotifyOrderCancelledAsync(int orderId, OrderDto order, string? userMessage = null)
         {
-            await _inner.NotifyOrderCancelledAsync(orderId, order);
+            await _inner.NotifyOrderCancelledAsync(orderId, order, userMessage);
             await BestEffort(orderId, async () =>
             {
                 await PushUser(order.UserId, "CancelledOrdersUpdated");
@@ -108,6 +111,8 @@ namespace Snap.Application.Orders.Services
                         // Additive + idempotent (see IUserPointsRepository.TryAwardPointsForOrderAsync)
                         // — never replaces or blocks the completion notification above.
                         await _pointsService.AwardForCompletedOrderAsync(orderId, order.UserId);
+                        if (order.Driverid.HasValue)
+                            await _driverPointsService.AwardForCompletedOrderAsync(orderId, order.Driverid.Value);
                         break;
 
                     case OrderStatus.Cancel:

@@ -91,6 +91,25 @@ namespace Snap.API.Controllers
             catch (Exception ex)                 { return StatusCode(500, new ApiResponse(500, ex.Message)); }
         }
 
+        // PUT: api/orders/driver/accept-scheduled — dedicated endpoint, equivalent to
+        // calling PUT api/orders/driver with Status="scheduled_accepted", for a driver
+        // accepting a scheduled order (scheduled → scheduled_accepted).
+        [HttpPut("driver/accept-scheduled")]
+        public async Task<IActionResult> AcceptScheduledOrder([FromBody] UpdateOrderDriverDto dto)
+        {
+            if (dto == null)
+                return BadRequest(new ApiResponse(400, "Invalid payload"));
+
+            try
+            {
+                await _orderService.AcceptScheduledOrderAsync(dto);
+                return Ok(new ApiResponse(200, "Scheduled order accepted successfully"));
+            }
+            catch (KeyNotFoundException ex)      { return NotFound(new ApiResponse(404, ex.Message)); }
+            catch (InvalidOperationException ex) { return BadRequest(new ApiResponse(400, ex.Message)); }
+            catch (Exception ex)                 { return StatusCode(500, new ApiResponse(500, ex.Message)); }
+        }
+
         // PUT: api/orders/user/cancel
         [HttpPut("user/cancel")]
         public async Task<IActionResult> CancelOrderByUser([FromBody] CancelOrderByUserDto dto)
@@ -110,11 +129,12 @@ namespace Snap.API.Controllers
             catch (Exception ex)                   { return StatusCode(500, new ApiResponse(500, ex.Message)); }
         }
 
-        // GET: api/orders
+        // GET: api/orders?driverId=7 — with driverId, only orders matching that driver's
+        // car type (CarData.CarBrand) and, for Pink Mode orders, only if the driver is female.
         [HttpGet]
-        public async Task<ActionResult<List<OrderDto>>> GetAllOrders()
+        public async Task<ActionResult<List<OrderDto>>> GetAllOrders([FromQuery] int? driverId)
         {
-            var orders = await _orderService.GetAllOrdersAsync();
+            var orders = await _orderService.GetAllOrdersAsync(driverId);
             return Ok(orders);
         }
 
@@ -139,6 +159,16 @@ namespace Snap.API.Controllers
         {
             var hasActiveOrder = await _orderService.DriverHasActiveOrderAsync(driverId);
             return Ok(new { hasActiveOrder });
+        }
+
+        // GET: api/orders/driver/{driverId}/active-order
+        // Lets the driver app restore the trip it's working on (e.g. after a reinstall
+        // or app restart) — full order incl. status, pickup/destination and customer info.
+        [HttpGet("driver/{driverId}/active-order")]
+        public async Task<IActionResult> GetDriverActiveOrder(int driverId)
+        {
+            var order = await _orderService.GetDriverActiveOrderAsync(driverId);
+            return Ok(new { hasActiveOrder = order != null, order });
         }
 
         // GET: api/orders/{id}

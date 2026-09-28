@@ -4,13 +4,13 @@ namespace Snap.Application.Orders.Interfaces
 {
     public interface IOrderV2QueryService
     {
-        Task<List<OrderV2Dto>> GetAllOrdersAsync();
+        Task<List<OrderV2Dto>> GetAllOrdersAsync(int? driverId = null);
         Task<OrderV2Dto?> GetByIdAsync(int id);
         Task<List<OrderV2Dto>> GetScheduledForUserAsync(string userId);
         Task<List<OrderV2Dto>> GetActiveForUserAsync(string userId);
         Task<List<OrderV2Dto>> GetCompletedForUserAsync(string userId);
         Task<List<OrderV2Dto>> GetCancelledForUserAsync(string userId);
-        Task<List<OrderV2Dto>> GetAllScheduledOrdersAsync();
+        Task<List<OrderV2Dto>> GetAllScheduledOrdersAsync(int? driverId = null);
         Task<OrderV2Dto?> GetScheduledByIdAsync(int id);
         Task<List<OrderV2Dto>> GetScheduledForDriverAsync(int driverId);
     }

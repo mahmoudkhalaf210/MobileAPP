@@ -24,11 +24,16 @@ namespace Snap.Infrastructure.Repositories
             _context.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id);
 
         // Mirrors the legacy OrderService.GetAllOrdersAsync semantics (all non-cancelled orders).
-        public Task<List<Order>> GetAllActiveOrdersAsync() =>
-            _context.Orders.AsNoTracking()
-                .Where(o => o.Status != OrderStatus.Cancel.GetStringValue())
-                .OrderByDescending(o => o.Date)
-                .ToListAsync();
+        public async Task<List<Order>> GetAllActiveOrdersAsync(int? driverId = null)
+        {
+            var query = _context.Orders.AsNoTracking()
+                .Where(o => o.Status != OrderStatus.Cancel.GetStringValue());
+
+            if (driverId.HasValue)
+                query = query.WhereVisibleTo(await DriverOrderMatching.GetProfileAsync(_context, driverId.Value));
+
+            return await query.OrderByDescending(o => o.Date).ToListAsync();
+        }
 
         // Mirrors the legacy OrderService.GetScheduledOrdersByUserAsync semantics.
         public Task<List<Order>> GetScheduledForUserAsync(string userId)
@@ -66,11 +71,16 @@ namespace Snap.Infrastructure.Repositories
                 .OrderByDescending(o => o.Date)
                 .ToListAsync();
 
-        public Task<List<Order>> GetAllScheduledOrdersAsync() =>
-            _context.Orders.AsNoTracking()
-                .Where(o => o.Status == "scheduled" || o.Status == "scheduled_accepted")
-                .OrderBy(o => o.Date)
-                .ToListAsync();
+        public async Task<List<Order>> GetAllScheduledOrdersAsync(int? driverId = null)
+        {
+            var query = _context.Orders.AsNoTracking()
+                .Where(o => o.Status == "scheduled" || o.Status == "scheduled_accepted");
+
+            if (driverId.HasValue)
+                query = query.WhereVisibleTo(await DriverOrderMatching.GetProfileAsync(_context, driverId.Value));
+
+            return await query.OrderBy(o => o.Date).ToListAsync();
+        }
 
         public Task<Order?> GetScheduledByIdAsync(int id) =>
             _context.Orders.AsNoTracking()

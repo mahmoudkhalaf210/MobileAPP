@@ -18,5 +18,11 @@ namespace Snap.Application.Orders.Interfaces
 
         // True if the driver already has a live, in-progress order (approve/Arrived/Started).
         Task<bool> HasActiveOrderAsync(int driverId);
+
+        // True if the driver's linked account is registered as female (Pink Mode eligibility).
+        Task<bool> IsDriverFemaleAsync(int driverId);
+
+        // True if the driver's car type (CarData.CarBrand) matches the order's CarType.
+        Task<bool> DriverMatchesCarTypeAsync(int driverId, string? orderCarType);
     }
 }

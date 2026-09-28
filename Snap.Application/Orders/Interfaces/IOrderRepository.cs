@@ -18,9 +18,13 @@ namespace Snap.Application.Orders.Interfaces
         void Remove(Order order);
 
         Task<OrderDto?> GetByIdProjectedAsync(int id, CancellationToken ct = default);
-        Task<List<OrderDto>> GetAllActiveProjectedAsync();
+        // driverId: only orders that driver may take (car type + Pink Mode); null = all.
+        Task<List<OrderDto>> GetAllActiveProjectedAsync(int? driverId = null);
         Task<List<OrderDto>> GetScheduledForUserProjectedAsync(string userId);
         Task<OrderStatusSnapshot?> GetStatusSnapshotAsync(int id);
+
+        // The order the driver is currently working on (approve / Arrived / Started / scheduled_accepted), if any.
+        Task<OrderDto?> GetActiveForDriverProjectedAsync(int driverId);
 
         Task<List<ScheduledOrderReminderInfo>> GetDueForReminderAsync(DateTime nowUtc, DateTime reminderThresholdUtc, CancellationToken ct);
         Task<List<ScheduledOrderStartingSoonInfo>> GetDueForStartingSoonAsync(DateTime startingSoonThresholdUtc, CancellationToken ct);
@@ -28,7 +32,7 @@ namespace Snap.Application.Orders.Interfaces
         Task<List<int>> GetBusyDriverIdsAsync(CancellationToken ct);
 
         Task<List<Order>> GetExpiredPendingTrackedAsync(DateTime cutoffUtc, CancellationToken ct);
-        Task<int> DeleteExpiredPendingOrdersRawAsync(CancellationToken ct);
+        Task<int> SoftDeleteCancelledOrdersAsync(CancellationToken ct);
 
         // Scheduled orders no driver ever accepted, whose ride time is at/past cutoffUtc.
         Task<List<Order>> GetUnclaimedScheduledDueTrackedAsync(DateTime cutoffUtc, CancellationToken ct);

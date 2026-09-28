@@ -20,9 +20,9 @@ namespace Snap.API.Controllers.V2
 
         // GET: api/v2/scheduled-orders
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] int? driverId)
         {
-            var orders = await _queryService.GetAllScheduledOrdersAsync();
+            var orders = await _queryService.GetAllScheduledOrdersAsync(driverId);
             return Ok(orders);
         }
 

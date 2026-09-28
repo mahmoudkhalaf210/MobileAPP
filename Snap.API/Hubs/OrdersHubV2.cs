@@ -38,6 +38,9 @@ namespace Snap.API.Hubs
 
         public Task<List<OrderV2Dto>> GetAllOrders() => _queryService.GetAllOrdersAsync();
 
+        /// <summary>Driver app: only orders matching the driver's car type (and Pink Mode eligibility).</summary>
+        public Task<List<OrderV2Dto>> GetAllOrdersForDriver(int driverId) => _queryService.GetAllOrdersAsync(driverId);
+
         public Task<List<OrderV2Dto>> GetScheduledOrdersForUser(string userId) =>
             _queryService.GetScheduledForUserAsync(userId);
 

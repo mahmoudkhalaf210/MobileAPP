@@ -39,6 +39,7 @@ namespace Snap.Infrastructure.DependencyInjection
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IOrderRepositoryV2, OrderRepositoryV2>();
             services.AddScoped<IUserPointsRepository, UserPointsRepository>();
+            services.AddScoped<IDriverPointsRepository, DriverPointsRepository>();
 
             // ── Orders persistence seam (Application-defined interfaces) ───────────
             services.AddScoped<IOrderRepository, OrderRepository>();
@@ -72,11 +73,8 @@ namespace Snap.Infrastructure.DependencyInjection
             // ── Startup seeders ───────────────────────────────────────────────────
             services.AddHostedService<DriverAvailabilityInitializer>();
 
-            // Add Order Cancellation Background Service
-            // services.AddHostedService<OrderCancellationService>();
-
-            // Add Pending Order Deletion Background Service (Outbox Pattern) - Removed to avoid conflict with Cancellation Service
-            // services.AddHostedService<PendingOrderDeletionService>();
+            // Pending orders unaccepted after 10 min → cancelled + user notified; all cancelled orders → soft-deleted.
+            services.AddHostedService<OrderCancellationService>();
 
             return services;
         }

@@ -12,12 +12,13 @@ namespace Snap.Application.Orders.Interfaces
         Task SetCarTypeEnumAsync(int orderId, CarType carType);
 
         Task<Order?> GetByIdAsync(int id);
-        Task<List<Order>> GetAllActiveOrdersAsync();
+        // driverId: only orders that driver may take (car type + Pink Mode); null = all.
+        Task<List<Order>> GetAllActiveOrdersAsync(int? driverId = null);
         Task<List<Order>> GetScheduledForUserAsync(string userId);
         Task<List<Order>> GetActiveForUserAsync(string userId);
         Task<List<Order>> GetCompletedForUserAsync(string userId);
         Task<List<Order>> GetCancelledForUserAsync(string userId);
-        Task<List<Order>> GetAllScheduledOrdersAsync();
+        Task<List<Order>> GetAllScheduledOrdersAsync(int? driverId = null);
         Task<Order?> GetScheduledByIdAsync(int id);
         Task<List<Order>> GetScheduledForDriverAsync(int driverId);
     }

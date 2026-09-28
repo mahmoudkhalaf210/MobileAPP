@@ -53,5 +53,44 @@ namespace Snap.API.Controllers.V2
             catch (KeyNotFoundException ex) { return NotFound(new ApiResponse(404, ex.Message)); }
             catch (Exception ex)            { return StatusCode(500, new ApiResponse(500, ex.Message)); }
         }
+
+        // POST: api/v2/orders/pink/normal — same as "normal" but always Pink Mode
+        // (only female drivers are notified/can accept, regardless of dto.PinkMode).
+        [HttpPost("pink/normal")]
+        public async Task<IActionResult> CreatePinkNormal([FromBody] CreateNormalOrderV2Dto dto)
+        {
+            if (dto == null)
+                return BadRequest(new ApiResponse(400, "Invalid payload"));
+
+            dto.PinkMode = true;
+
+            try
+            {
+                var order = await _commandService.CreateNormalAsync(dto);
+                return Ok(order);
+            }
+            catch (ArgumentException ex)    { return BadRequest(new ApiResponse(400, ex.Message)); }
+            catch (KeyNotFoundException ex) { return NotFound(new ApiResponse(404, ex.Message)); }
+            catch (Exception ex)            { return StatusCode(500, new ApiResponse(500, ex.Message)); }
+        }
+
+        // POST: api/v2/orders/pink/schedule — same as "schedule" but always Pink Mode.
+        [HttpPost("pink/schedule")]
+        public async Task<IActionResult> CreatePinkScheduled([FromBody] CreateScheduledOrderV2Dto dto)
+        {
+            if (dto == null)
+                return BadRequest(new ApiResponse(400, "Invalid payload"));
+
+            dto.PinkMode = true;
+
+            try
+            {
+                var order = await _commandService.CreateScheduledAsync(dto);
+                return Ok(order);
+            }
+            catch (ArgumentException ex)    { return BadRequest(new ApiResponse(400, ex.Message)); }
+            catch (KeyNotFoundException ex) { return NotFound(new ApiResponse(404, ex.Message)); }
+            catch (Exception ex)            { return StatusCode(500, new ApiResponse(500, ex.Message)); }
+        }
     }
 }

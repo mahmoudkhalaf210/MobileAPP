@@ -42,12 +42,17 @@ namespace Snap.Infrastructure.Repositories
                 .Select(OrderMapper.ToProjection)
                 .FirstOrDefaultAsync(ct);
 
-        public Task<List<OrderDto>> GetAllActiveProjectedAsync() =>
-            _context.Orders
+        public async Task<List<OrderDto>> GetAllActiveProjectedAsync(int? driverId = null)
+        {
+            var query = _context.Orders
                 .AsNoTracking()
-                .Where(o => o.Status != OrderStatus.Cancel.GetStringValue())
-                .Select(OrderMapper.ToProjection)
-                .ToListAsync();
+                .Where(o => o.Status != OrderStatus.Cancel.GetStringValue());
+
+            if (driverId.HasValue)
+                query = query.WhereVisibleTo(await DriverOrderMatching.GetProfileAsync(_context, driverId.Value));
+
+            return await query.Select(OrderMapper.ToProjection).ToListAsync();
+        }
 
         public Task<List<OrderDto>> GetScheduledForUserProjectedAsync(string userId)
         {
@@ -69,10 +74,30 @@ namespace Snap.Infrastructure.Repositories
             var o = await _context.Orders
                 .AsNoTracking()
                 .Where(o => o.Id == id)
-                .Select(o => new { o.Id, o.Status, o.Date })
+                .Select(o => new { o.Id, o.Status, o.Date, o.PinkMode, o.CarType })
                 .FirstOrDefaultAsync();
 
-            return o is null ? null : new OrderStatusSnapshot { Id = o.Id, Status = o.Status, Date = o.Date };
+            return o is null ? null : new OrderStatusSnapshot { Id = o.Id, Status = o.Status, Date = o.Date, PinkMode = o.PinkMode, CarType = o.CarType };
+        }
+
+        public Task<OrderDto?> GetActiveForDriverProjectedAsync(int driverId)
+        {
+            var activeStatuses = new[]
+            {
+                OrderStatus.Approved.GetStringValue(),
+                OrderStatus.Arrived.GetStringValue(),
+                OrderStatus.Started.GetStringValue(),
+                "scheduled_accepted"
+            };
+
+            // An in-progress trip wins over a reserved scheduled one; otherwise the soonest scheduled ride.
+            return _context.Orders
+                .AsNoTracking()
+                .Where(o => o.Driverid == driverId && activeStatuses.Contains(o.Status))
+                .OrderBy(o => o.Status == "scheduled_accepted" ? 1 : 0)
+                .ThenBy(o => o.Date)
+                .Select(OrderMapper.ToProjection)
+                .FirstOrDefaultAsync();
         }
 
         public async Task<List<ScheduledOrderReminderInfo>> GetDueForReminderAsync(DateTime nowUtc, DateTime reminderThresholdUtc, CancellationToken ct)
@@ -130,19 +155,12 @@ namespace Snap.Infrastructure.Repositories
                 .ToListAsync(ct);
         }
 
-        public Task<int> DeleteExpiredPendingOrdersRawAsync(CancellationToken ct)
+        public Task<int> SoftDeleteCancelledOrdersAsync(CancellationToken ct)
         {
-            // Uses SQL Server's GETDATE() to ensure time comparison is done using database server time.
-            var sqlQuery = @"
-                    delete from Orders
-                    WHERE Status = 'pending'
-                      AND Date AT TIME ZONE 'UTC' AT TIME ZONE 'Egypt Standard Time'
-                          <= FORMAT(DATEADD(MINUTE, -4,
-                              (GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Egypt Standard Time')
-                          ), 'yyyy-MM-dd HH:mm')
-                   ";
-
-            return _context.Database.ExecuteSqlRawAsync(sqlQuery, ct);
+            return _context.Database.ExecuteSqlRawAsync(
+                "UPDATE Orders SET IsDeleted = 1, DeletedAtUtc = SYSUTCDATETIME() WHERE Status = {0} AND IsDeleted = 0",
+                new object[] { OrderStatus.Cancel.GetStringValue() },
+                ct);
         }
 
         public Task<List<Order>> GetUnclaimedScheduledDueTrackedAsync(DateTime cutoffUtc, CancellationToken ct) =>

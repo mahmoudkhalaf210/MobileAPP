@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Snap.Application.Domain.Entities;
+using Snap.Application.Domain.Enums;
 using Snap.Application.Orders.Interfaces;
 using Snap.Infrastructure.Persistence;
 
@@ -37,9 +39,8 @@ namespace Snap.Infrastructure.Repositories
                       (_, t) => t.Token)
                 .FirstOrDefaultAsync();
 
-        public Task<List<string>> GetAllDriverTokensAsync(CancellationToken ct) =>
-            _context.Drivers
-                .AsNoTracking()
+        public Task<List<string>> GetAllDriverTokensAsync(CarType? carType, bool femaleOnly, CancellationToken ct) =>
+            FilterDrivers(_context.Drivers.AsNoTracking(), carType, femaleOnly)
                 .Join(_context.FCMTokenUsers,
                       d   => d.UserId,
                       fcm => fcm.UserId,
@@ -48,10 +49,8 @@ namespace Snap.Infrastructure.Repositories
                 .Distinct()
                 .ToListAsync(ct);
 
-        public Task<List<string>> GetTargetDriverTokensAsync(IReadOnlyList<int> driverIds, CancellationToken ct) =>
-            _context.Drivers
-                .AsNoTracking()
-                .Where(d => driverIds.Contains(d.Id))
+        public Task<List<string>> GetTargetDriverTokensAsync(IReadOnlyList<int> driverIds, CarType? carType, bool femaleOnly, CancellationToken ct) =>
+            FilterDrivers(_context.Drivers.AsNoTracking().Where(d => driverIds.Contains(d.Id)), carType, femaleOnly)
                 .Join(_context.FCMTokenUsers,
                       d   => d.UserId,
                       fcm => fcm.UserId,
@@ -59,5 +58,9 @@ namespace Snap.Infrastructure.Repositories
                 .Where(t => !string.IsNullOrEmpty(t))
                 .Distinct()
                 .ToListAsync(ct);
+
+        // Rules live in DriverOrderMatching (shared with accept validation and driver order lists).
+        private IQueryable<Driver> FilterDrivers(IQueryable<Driver> query, CarType? carType, bool femaleOnly) =>
+            query.WhereEligible(_context, carType, femaleOnly);
     }
 }

@@ -11,10 +11,11 @@ namespace Snap.Application.Orders.Interfaces
         Task CancelOrderByDriverAsync(UpdateOrderDriverDto dto);
         Task HandleWorkflowTransitionAsync(UpdateOrderDriverDto dto, OrderStatus targetStatus);
         Task CancelOrderByUserAsync(CancelOrderByUserDto dto);
-        Task<List<OrderDto>> GetAllOrdersAsync();
+        Task<List<OrderDto>> GetAllOrdersAsync(int? driverId = null);
         Task<List<OrderDto>> GetScheduledOrdersByUserAsync(string userId);
         Task<OrderDto> GetOrderByIdAsync(int id);
         Task DeleteOrderAsync(int id);
         Task<bool> DriverHasActiveOrderAsync(int driverId);
+        Task<OrderDto?> GetDriverActiveOrderAsync(int driverId);
     }
 }

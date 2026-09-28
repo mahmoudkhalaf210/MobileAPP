@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Snap.Application.Domain.Enums;
 
 namespace Snap.Application.Orders.Interfaces
 {
@@ -10,7 +11,11 @@ namespace Snap.Application.Orders.Interfaces
         Task<string?> GetDriverNameAsync(int driverId);
         Task<string?> GetUserFcmTokenAsync(string userId);
         Task<string?> GetDriverFcmTokenAsync(int driverId);
-        Task<List<string>> GetAllDriverTokensAsync(CancellationToken ct);
-        Task<List<string>> GetTargetDriverTokensAsync(IReadOnlyList<int> driverIds, CancellationToken ct);
+
+        // carType: null = no car-type filtering (matches any). A driver who hasn't
+        // set CarData.CarBrand yet is always included, regardless of carType.
+        // femaleOnly: true = only drivers whose linked User.Gender is "female" (Pink Mode).
+        Task<List<string>> GetAllDriverTokensAsync(CarType? carType, bool femaleOnly, CancellationToken ct);
+        Task<List<string>> GetTargetDriverTokensAsync(IReadOnlyList<int> driverIds, CarType? carType, bool femaleOnly, CancellationToken ct);
     }
 }

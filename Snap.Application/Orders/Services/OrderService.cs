@@ -118,6 +118,15 @@ namespace Snap.Application.Orders.Services
             if (await _workflowRepo.HasActiveOrderAsync(dto.Driverid))
                 throw new InvalidOperationException("Driver already has an active order in progress.");
 
+            var snapshot = await _orderRepo.GetStatusSnapshotAsync(dto.OrderId)
+                ?? throw new KeyNotFoundException("Order not found");
+
+            if (snapshot.PinkMode && !await _workflowRepo.IsDriverFemaleAsync(dto.Driverid))
+                throw new InvalidOperationException("This is a Pink Mode order — only female drivers can accept it.");
+
+            if (!await _workflowRepo.DriverMatchesCarTypeAsync(dto.Driverid, snapshot.CarType))
+                throw new InvalidOperationException($"This order requires a {snapshot.CarType} car.");
+
             var rows = await _workflowRepo.TryAssignDriverAsync(
                 dto.OrderId,
                 dto.Driverid,
@@ -142,6 +151,12 @@ namespace Snap.Application.Orders.Services
 
             if (!string.Equals(order.Status, "scheduled", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Order is not available for scheduled acceptance.");
+
+            if (order.PinkMode && !await _workflowRepo.IsDriverFemaleAsync(dto.Driverid))
+                throw new InvalidOperationException("This is a Pink Mode order — only female drivers can accept it.");
+
+            if (!await _workflowRepo.DriverMatchesCarTypeAsync(dto.Driverid, order.CarType))
+                throw new InvalidOperationException($"This order requires a {order.CarType} car.");
 
             var settings = _options.Value;
             var conflictWindow = Math.Max(0, settings.ScheduledConflictWindowMinutes);
@@ -241,7 +256,7 @@ namespace Snap.Application.Orders.Services
 
         // ── Queries ───────────────────────────────────────────────────────────────
 
-        public Task<List<OrderDto>> GetAllOrdersAsync() => _orderRepo.GetAllActiveProjectedAsync();
+        public Task<List<OrderDto>> GetAllOrdersAsync(int? driverId = null) => _orderRepo.GetAllActiveProjectedAsync(driverId);
 
         public Task<List<OrderDto>> GetScheduledOrdersByUserAsync(string userId) =>
             _orderRepo.GetScheduledForUserProjectedAsync(userId);
@@ -261,6 +276,9 @@ namespace Snap.Application.Orders.Services
 
         public Task<bool> DriverHasActiveOrderAsync(int driverId) =>
             _workflowRepo.HasActiveOrderAsync(driverId);
+
+        public Task<OrderDto?> GetDriverActiveOrderAsync(int driverId) =>
+            _orderRepo.GetActiveForDriverProjectedAsync(driverId);
 
         // ── Nearest-driver selection ──────────────────────────────────────────────
         //
