@@ -15,6 +15,8 @@ using Snap.Application.Orders.Interfaces;
 using Snap.Infrastructure.DependencyInjection;
 using Snap.Infrastructure.Persistence;
 using Snap.Infrastructure.Persistence.Seeders;
+using Serilog;
+using Serilog.Events;
 using System.Text.Json.Serialization;
 
 namespace Snap.API
@@ -24,6 +26,22 @@ namespace Snap.API
         public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // ── File logging: one file per day under Logs/, files older than 7 days are deleted ──
+            builder.Host.UseSerilog((context, config) => config
+                .MinimumLevel.Information()
+                .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+                .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+                .Enrich.FromLogContext()
+                .WriteTo.Console()
+                .WriteTo.File(
+                    Path.Combine(context.HostingEnvironment.ContentRootPath, "Logs", "log-.txt"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 7,
+                    fileSizeLimitBytes: 50 * 1024 * 1024,
+                    rollOnFileSizeLimit: true,
+                    shared: true,
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
 
             // Add services to the container.
             builder.Services.AddControllers().AddJsonOptions(options =>

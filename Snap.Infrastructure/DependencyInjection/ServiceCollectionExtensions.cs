@@ -56,6 +56,9 @@ namespace Snap.Infrastructure.DependencyInjection
             services.AddScoped<INotificationService, NotificationService>();
             services.AddScoped<ITokenService, TokenService>();
 
+            // Keeps the FCM OAuth token + connection warm so pushes never wait on a cold start.
+            services.AddHostedService<FcmWarmupService>();
+
             // ── v2: SignalR real-time surface ───────────────────────────────────────
             services.AddSignalR();
 

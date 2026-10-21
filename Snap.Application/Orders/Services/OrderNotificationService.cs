@@ -40,9 +40,6 @@ namespace Snap.Application.Orders.Services
         {
             var driverName = await _notifRepo.GetDriverNameAsync(driverId) ?? "الكابتن";
 
-            await _ws.BroadcastOrderStatusAsync(
-                new { orderId, status = "approved", driverId }, default);
-
             var userToken = await _notifRepo.GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
             if (!string.IsNullOrEmpty(userToken))
             {
@@ -62,14 +59,14 @@ namespace Snap.Application.Orders.Services
                     "لقد قبلت الطلب بنجاح.",
                     BuildPayload("order_accepted", orderId, order));
             }
+
+            await BroadcastDataAsync(orderId, () =>
+                _ws.BroadcastOrderStatusAsync(new { orderId, status = "approved", driverId }, default));
         }
 
         public async Task NotifyScheduledOrderAcceptedAsync(int orderId, int driverId, OrderDto order)
         {
             var driverName = await _notifRepo.GetDriverNameAsync(driverId) ?? "الكابتن";
-
-            await _ws.BroadcastOrderStatusAsync(
-                new { orderId, status = "scheduled_accepted", driverId }, default);
 
             var userToken = await _notifRepo.GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
             if (!string.IsNullOrEmpty(userToken))
@@ -90,6 +87,9 @@ namespace Snap.Application.Orders.Services
                     $"لقد حجزت رحلة مجدولة الساعة {FormatEgyptTime(order.Date)}.",
                     BuildPayload("scheduled_order_reserved", orderId, order));
             }
+
+            await BroadcastDataAsync(orderId, () =>
+                _ws.BroadcastOrderStatusAsync(new { orderId, status = "scheduled_accepted", driverId }, default));
         }
 
         public async Task NotifyScheduledRideReminderAsync(int orderId, int driverId, OrderDto order)
@@ -107,9 +107,6 @@ namespace Snap.Application.Orders.Services
 
         public async Task NotifyScheduledRideStartingSoonAsync(int orderId, int driverId, OrderDto order)
         {
-            await _ws.BroadcastOrderStatusAsync(
-                new { orderId, status = order.Status, driverid = order.Driverid }, default);
-
             var userToken = await _notifRepo.GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
             if (!string.IsNullOrEmpty(userToken))
             {
@@ -129,14 +126,15 @@ namespace Snap.Application.Orders.Services
                     "رحلتك المجدولة ستبدأ قريباً، برجاء الاستعداد.",
                     BuildPayload("scheduled_starting_soon", orderId, order));
             }
+
+            await BroadcastDataAsync(orderId, () =>
+                _ws.BroadcastOrderStatusAsync(new { orderId, status = order.Status, driverid = order.Driverid }, default));
         }
 
         // ── Order cancelled ───────────────────────────────────────────────────────
 
         public async Task NotifyOrderCancelledAsync(int orderId, OrderDto order, string? userMessage = null)
         {
-            await _ws.BroadcastOrderCancelledAsync(orderId, default);
-
             var payload   = BuildPayload("order_cancelled", orderId, order);
             var userToken = await _notifRepo.GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
 
@@ -149,15 +147,14 @@ namespace Snap.Application.Orders.Services
                 if (!string.IsNullOrEmpty(driverToken))
                     await _fcm.SendNotification(driverToken, "تم إلغاء الطلب", "تم إلغاء الطلب.", payload);
             }
+
+            await BroadcastDataAsync(orderId, () => _ws.BroadcastOrderCancelledAsync(orderId, default));
         }
 
         // ── Workflow transition ───────────────────────────────────────────────────
 
         public async Task NotifyWorkflowTransitionAsync(int orderId, OrderDto order, OrderStatus targetStatus)
         {
-            await _ws.BroadcastOrderStatusAsync(
-                new { orderId, status = order.Status, driverid = order.Driverid }, default);
-
             var (type, userTitle, userBody, driverTitle, driverBody) = WorkflowMessages(targetStatus);
             var payload   = BuildPayload(type, orderId, order);
             var userToken = await _notifRepo.GetUserFcmTokenAsync(order.UserId) ?? order.FCMToken;
@@ -171,6 +168,9 @@ namespace Snap.Application.Orders.Services
                 if (!string.IsNullOrEmpty(driverToken))
                     await _fcm.SendNotification(driverToken, driverTitle, driverBody, payload);
             }
+
+            await BroadcastDataAsync(orderId, () =>
+                _ws.BroadcastOrderStatusAsync(new { orderId, status = order.Status, driverid = order.Driverid }, default));
         }
 
         // ── New-order driver notification (background job) ────────────────────────
@@ -186,9 +186,6 @@ namespace Snap.Application.Orders.Services
                     return;
                 }
 
-                // Data path: order-list data over WebSocket, unchanged from the deployed contract.
-                await BroadcastNewOrderDataAsync(order, targetDriverIds, ct);
-
                 // Push path: FCM only. Recipients are chosen from the DB (car type + Pink Mode,
                 // DriverOrderMatching) and never depend on WebSocket connection/subscription state.
                 var carType = ParseCarType(order.CarType);
@@ -196,20 +193,24 @@ namespace Snap.Application.Orders.Services
                     ? await _notifRepo.GetAllDriverTokensAsync(carType, order.PinkMode, ct)
                     : await _notifRepo.GetTargetDriverTokensAsync(targetDriverIds, carType, order.PinkMode, ct);
 
-                if (tokens.Count == 0) return;
+                if (tokens.Count > 0)
+                {
+                    _logger.LogInformation(
+                        "Order {Id}: {Mode} — notifying {Count} token(s)",
+                        order.Id,
+                        targetDriverIds is null ? "AllDrivers" : "NearestOnly",
+                        tokens.Count);
 
-                _logger.LogInformation(
-                    "Order {Id}: {Mode} — notifying {Count} token(s)",
-                    order.Id,
-                    targetDriverIds is null ? "AllDrivers" : "NearestOnly",
-                    tokens.Count);
+                    await _fcm.SendBatchNotificationsAsync(
+                        tokens,
+                        "طلب جديد متاح",
+                        "يوجد طلب رحلة جديد، افتح التطبيق الآن!",
+                        BuildPayload("new_order", order.Id, order),
+                        FcmBatchSize);
+                }
 
-                await _fcm.SendBatchNotificationsAsync(
-                    tokens,
-                    "طلب جديد متاح",
-                    "يوجد طلب رحلة جديد، افتح التطبيق الآن!",
-                    BuildPayload("new_order", order.Id, order),
-                    FcmBatchSize);
+                // Data path only (list refresh) — sent after the push so it can never delay it.
+                await BroadcastNewOrderDataAsync(order, targetDriverIds, ct);
             }
             catch (Exception ex)
             {
@@ -228,22 +229,24 @@ namespace Snap.Application.Orders.Services
                     return;
                 }
 
-                await BroadcastNewOrderDataAsync(order, targetDriverIds, ct);
-
                 // Push path: same FCM eligibility rules as immediate orders.
                 var carType = ParseCarType(order.CarType);
                 var tokens = targetDriverIds is null
                     ? await _notifRepo.GetAllDriverTokensAsync(carType, order.PinkMode, ct)
                     : await _notifRepo.GetTargetDriverTokensAsync(targetDriverIds, carType, order.PinkMode, ct);
 
-                if (tokens.Count == 0) return;
+                if (tokens.Count > 0)
+                {
+                    await _fcm.SendBatchNotificationsAsync(
+                        tokens,
+                        "رحلة مجدولة متاحة",
+                        $"رحلة مجدولة الساعة {FormatEgyptTime(order.Date)}، افتح التطبيق لقبولها.",
+                        BuildPayload("scheduled_order", order.Id, order),
+                        FcmBatchSize);
+                }
 
-                await _fcm.SendBatchNotificationsAsync(
-                    tokens,
-                    "رحلة مجدولة متاحة",
-                    $"رحلة مجدولة الساعة {FormatEgyptTime(order.Date)}، افتح التطبيق لقبولها.",
-                    BuildPayload("scheduled_order", order.Id, order),
-                    FcmBatchSize);
+                // Data path only (list refresh) — sent after the push so it can never delay it.
+                await BroadcastNewOrderDataAsync(order, targetDriverIds, ct);
             }
             catch (Exception ex)
             {
@@ -260,7 +263,7 @@ namespace Snap.Application.Orders.Services
 
         // WebSocket "NewOrder" is order data for list refresh, not a notification. Same
         // targeting as the deployed contract (null = every connected socket), and isolated
-        // so a socket failure can never prevent the FCM push that follows.
+        // so a socket failure can never affect the FCM push.
         private async Task BroadcastNewOrderDataAsync(OrderDto order, IReadOnlyList<int>? targetDriverIds, CancellationToken ct)
         {
             try
@@ -269,7 +272,21 @@ namespace Snap.Application.Orders.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "WebSocket NewOrder broadcast failed for order {Id}; FCM push continues", order.Id);
+                _logger.LogWarning(ex, "WebSocket NewOrder broadcast failed for order {Id}", order.Id);
+            }
+        }
+
+        // WebSocket carries order data for list refresh only — notifications are FCM.
+        // Runs after the push and is isolated so a socket problem can never delay or block it.
+        private async Task BroadcastDataAsync(int orderId, Func<Task> broadcast)
+        {
+            try
+            {
+                await broadcast();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "WebSocket data broadcast failed for order {Id}", orderId);
             }
         }
 

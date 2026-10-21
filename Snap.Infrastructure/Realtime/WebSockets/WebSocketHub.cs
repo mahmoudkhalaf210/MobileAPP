@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -23,6 +24,15 @@ namespace Snap.Infrastructure.Realtime.WebSockets
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
+
+        // A half-open connection (phone backgrounded / switched network) still reports
+        // State == Open, and SendAsync on it can hang until the TCP timeout. Cap each send
+        // and drop the socket if it can't keep up; its receive loop then unregisters it.
+        private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(5);
+
+        // WebSocket allows only one outstanding SendAsync per socket; overlapping
+        // broadcasts must queue per socket instead of throwing and losing the message.
+        private static readonly ConditionalWeakTable<WebSocket, SemaphoreSlim> SendLocks = new();
 
         // ── Location channel (/ws/location) ──────────────────────────────────────
         private readonly ConcurrentDictionary<string, WebSocket> _locationSockets  = new();
@@ -108,15 +118,31 @@ namespace Snap.Infrastructure.Realtime.WebSockets
 
         private static async Task SendBytesAsync(WebSocket socket, byte[] bytes, CancellationToken ct)
         {
+            var sendLock = SendLocks.GetValue(socket, _ => new SemaphoreSlim(1, 1));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(SendTimeout);
+
+            var acquired = false;
             try
             {
+                await sendLock.WaitAsync(timeout.Token).ConfigureAwait(false);
+                acquired = true;
+
                 await socket.SendAsync(
                     new ReadOnlyMemory<byte>(bytes),
                     WebSocketMessageType.Text,
                     endOfMessage: true,
-                    ct).ConfigureAwait(false);
+                    timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                socket.Abort();
             }
             catch { }
+            finally
+            {
+                if (acquired) sendLock.Release();
+            }
         }
 
         private static byte[] Serialize(object obj)

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using Microsoft.Extensions.Logging;
@@ -25,12 +26,14 @@ namespace Snap.Infrastructure.Notifications.Firebase
 
             var messaging = GetMessaging();
             var message   = BuildMessage(token, title, body, data);
+            var stopwatch = Stopwatch.StartNew();
 
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
                 try
                 {
                     await messaging.SendAsync(message);
+                    LogSent(data, token, stopwatch, attempt);
                     return; // success
                 }
                 catch (FirebaseMessagingException ex) when (IsTransient(ex) && attempt < MaxRetries)
@@ -96,13 +99,15 @@ namespace Snap.Infrastructure.Notifications.Firebase
             string title, string body,
             IDictionary<string, string>? data)
         {
-            var message = BuildMessage(token, title, body, data);
+            var message   = BuildMessage(token, title, body, data);
+            var stopwatch = Stopwatch.StartNew();
 
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
                 try
                 {
                     await messaging.SendAsync(message);
+                    LogSent(data, token, stopwatch, attempt);
                     return;
                 }
                 catch (FirebaseMessagingException ex) when (IsTransient(ex) && attempt < MaxRetries)
@@ -152,18 +157,35 @@ namespace Snap.Infrastructure.Notifications.Firebase
                 Notification = new FirebaseAdmin.Messaging.Notification { Title = title, Body = body },
                 Android      = new AndroidConfig
                 {
+                    Priority     = Priority.High,
                     Notification = new AndroidNotification
                     {
                         ChannelId = AndroidChannelId,
                         Sound     = "default"
                     }
                 },
-                Apns = new ApnsConfig { Aps = new Aps { Sound = "default" } },
+                Apns = new ApnsConfig
+                {
+                    Headers = new Dictionary<string, string> { { "apns-priority", "10" } },
+                    Aps     = new Aps { Sound = "default" }
+                },
                 Data = data is { Count: > 0 }
                     ? new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
                         new Dictionary<string, string>(data))
                     : null
             };
+
+        // Per-send timing in the log file so push delays can be traced to the server or to FCM/device.
+        private void LogSent(IDictionary<string, string>? data, string token, Stopwatch stopwatch, int attempt)
+        {
+            string? type = null, orderId = null;
+            data?.TryGetValue("type", out type);
+            data?.TryGetValue("orderId", out orderId);
+
+            _logger.LogInformation(
+                "FCM sent {Type} for order {OrderId} to {Prefix}… in {Ms} ms (attempt {Attempt})",
+                type ?? "-", orderId ?? "-", SafePrefix(token), stopwatch.ElapsedMilliseconds, attempt);
+        }
 
         // Show only first 8 chars so tokens are identifiable without being leaked in logs
         private static string SafePrefix(string token) =>
